@@ -1,0 +1,550 @@
+---
+title: "HW1"
+author: "Emanuele Iaccarino"
+date: "`r Sys.Date()`"
+output: 
+  pdf_document:
+    keep_tex: true
+header-includes:
+  - \usepackage{times}
+  - \usepackage[top=2cm, bottom=2cm, left=2cm, right=2cm]{geometry}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+```
+
+# Part 1: When Brutti and Spinelli collide
+
+### Your job - Part 1
+
+Suppose that (Y, X) are random variables with 
+$$
+Y \in \{0,1\}  \quad \text{and} \quad  X \in \mathbb{R} . 
+$$
+Suppose that
+
+$$
+(X \mid Y = 0) \sim \text{Unif}(-3,1) \quad \text{and} \quad (X \mid Y = 1) \sim \text{Unif}(-1,3).
+$$
+
+Further suppose that 
+$$
+\mathbb{P}(Y = 0) = \mathbb{P}(Y = 1) = \frac{1}{2}
+$$
+##### 1. Find (with pen and paper) the Bayes classification rule η*(x).
+
+We want to find the **Bayes classification rule** for 
+$$
+\eta^*(x).
+$$
+From the cheat-sheet, we know:
+
+$$
+f_X(x) = \frac{1}{b-a} \mathbb{I}(x) \quad \text{for } x \in [a,b] \quad \text{where} \quad  a, b \in \mathbb{R}.
+$$
+$$
+f_X(x) = \frac{1}{4} \mathbb{I}_{[-3,1]}(x) \quad \text{for } X, Y \in \{0,1\}
+$$
+From the given information:
+$$
+p(x \mid Y = 0) =
+\begin{cases}
+\frac{1}{4}, & \text{for } x \in [-3,1] \\
+0, & \text{otherwise}
+\end{cases}
+$$
+
+Similarly,
+
+$$
+p(x \mid Y = 1) =
+\begin{cases}
+\frac{1}{4}, & \text{for } x \in [-1,3] \\
+0, & \text{otherwise}
+\end{cases}
+$$
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+# PDF
+x_vals <- seq(-4, 4, length.out = 1000)  # Range of x values for plotting
+
+df <- tibble(
+  x = x_vals,
+  f0 = ifelse(x_vals >= -3 & x_vals <= 1, 1/4, 0),  # p(x | Y=0)
+  f1 = ifelse(x_vals >= -1 & x_vals <= 3, 1/4, 0)   # p(x | Y=1)
+) %>%
+  pivot_longer(cols = c(f0, f1), names_to = "label", values_to = "density")
+
+# Plot
+ggplot() +
+  geom_ribbon(data = df, aes(x = x, ymin = 0, ymax = density, fill = label), alpha = 0.5) +  # Fill areas
+  geom_line(data = df, aes(x = x, y = density, color = label), size = 2) +  # Thick lines for emphasis
+  labs(title = "PDF", x = "X", y = "Density") + 
+  scale_fill_manual(values = c("f0" = "darkblue", "f1" = "darkred"), guide = "none") +
+  scale_color_manual(values = c("f0" = "darkblue", "f1" = "darkred"), guide = "none") + 
+  theme_minimal()
+
+```
+I removed the legends from the plot since not really clear, explanation is below:
+- darkblue + darkred for p(x | Y = 0)
+- darkorange + darkred for p(x | Y = 1)
+- darkred focus on the intersection of the two areas p(x | Y = 0) ∩ p(x | Y = 0)
+
+$$
+r(x) = \frac{p(x \mid Y = 1) P(Y = 1)}{p(x \mid Y = 1) P(Y = 1) + p(x \mid Y = 0) P(Y = 0)}
+$$
+Since we know that:
+$$
+P(Y = 0) = P(Y = 1) = \frac{1}{2}
+$$
+we substitute:
+$$
+r(x) = \frac{\frac{1}{2} p(x \mid Y = 1)}{\frac{1}{2} p(x \mid Y = 1) + \frac{1}{2} p(x \mid Y = 0)}
+$$
+which simplifies to:
+$$
+r(x) = \frac{p(x \mid Y = 1)}{p(x \mid Y = 1) + p(x \mid Y = 0)}
+$$
+Case I: 
+$$
+\text{If} \quad  x < -3  \quad  \text{or} \quad  x > 3 ,  \text{ then no valid } \forall x, y
+
+$$
+Case II:  
+$$
+\text{If} \quad  x \in [-3, -1] , \text{ then:} \quad p(x \mid Y = 0) = \frac{1}{4}, \quad p(x \mid Y = 1) = 0
+$$
+$$
+r(x) = \frac{0}{\frac{1}{4} + 0} = 0 \Rightarrow P(Y = 1 \mid X = x) = 0
+$$
+Case III:
+$$
+\text{If} \quad  x \in [-1, 1] , \text{ then:} \quad p(x \mid Y = 0) = \frac{1}{4}, \quad p(x \mid Y = 1) = \frac{1}{4}
+$$
+$$
+r(x) = \frac{\frac{1}{4}}{\frac{1}{4} + \frac{1}{4}} = \frac{0.5}{1} = 0.5 \Rightarrow P(Y = 1 \mid X = x) = 0.5
+$$
+Case IV:
+$$
+\text{If} \quad x \in (1,3] , \text{ then:} \quad p(x \mid Y = 0) = 0, \quad p(x \mid Y = 1) = \frac{1}{4}
+$$
+$$
+r(x) = \frac{\frac{1}{4}}{\frac{1}{4} + 0} = 1 \Rightarrow P(Y = 1 \mid X = x) = 1.
+$$
+So to summarize:
+$$
+r(x) =
+\begin{cases} 
+0, & x \in [-3, -1) \\ 
+0.5, & x \in [-1,1] \\ 
+1, & x \in (1,3] \\ 
+0, & \text{otherwise}
+\end{cases}
+$$
+$$
+\eta^*(x) =
+\begin{cases} 
+1, & \text{if } r(x) \geq 0.5 \\ 
+0, & \text{if } r(x) \leq 0.5
+\end{cases}
+$$
+$$
+\begin{aligned}
+& r(x) = 0 \Rightarrow x < -1 \Rightarrow \eta^*(x) = 0 \\
+& r(x) = 0.5 \Rightarrow x \in [-1,1] \Rightarrow \eta^*(x) = 0 \\
+&r(x) = 1 \Rightarrow x \in (1,3] \Rightarrow x > 1 \Rightarrow \eta^*(x) = 1
+\end{aligned}
+$$
+$$
+\text{so:} \quad \eta^*(x) =
+\begin{cases} 
+0, & x \leq 1 \\ 
+1, & x > 1
+\end{cases}
+\Rightarrow \text{decision boundary: } x = 1
+$$
+##### 2. Simulate n = 1000 data from the joint data model p(y, x) =      p(x | y) * p(y) described above, and then:
+- Plot the data (or a subset for clarity) together with the regression function r(x) that defines η*(x)
+```{r}
+# Define constants
+set.seed(22) # my lucky number 
+n =1000  # Number of data points for train
+m = 10000 # Number of data points for test
+```
+
+```{r}
+# Distributions
+
+# Density function for X | Y = 0 (Uniform(-3, 1))
+f0 = function(x) ifelse(x >= -3 & x <= 1, 1 / 4, 0)
+# Density function for X | Y = 1 (Uniform(-1, 3))
+f1 = function(x) ifelse(x >= -1 & x <= 3, 1 / 4, 0)
+```
+
+```{r}
+# Simulate Data
+generate_data = function(sample_size) {
+y = rbinom(sample_size, 1, 0.5)  # Simulate labels Y with P(Y = 1) = P(Y = 0) = 0.5
+x = ifelse(y == 0, runif(sample_size, -3, 1), runif(sample_size, -1, 3))  # Simulate X based on Y
+data = data.frame(x = x, y = y) 
+}
+```
+
+```{r}
+# Regression function r(x)
+r = function(x) {
+  num = 0.5 * f1(x)  # Numerator: P(Y = 1) * f1(x)
+  denom = 0.5 * f1(x) + 0.5 * f0(x)  # Denominator: Weighted sum of densities
+  num / denom  # Conditional probability P(Y = 1 | X = x)
+}
+```
+
+```{r}
+x_seq = seq(-3, 3, length.out = 1000)  # Sequence of x values for plotting
+r_vals = r(x_seq)  # Compute r(x) values for the sequence
+```
+
+```{r}
+library(ggplot2)
+ggplot(data, aes(x = x, y = y)) + 
+  geom_point() +  # Plot the data points
+  stat_function(fun = r, linetype = "dashed")   # Add r(x) curve
+```
+This plot shows the data points we geneerated and r(x) function used as decision rule for Bayes classifier
+
+- Evaluate the performance of the Bayes Classifiers η*(x) on this simple (only 1 feature!) data
+
+```{r}
+# Bayes classification rule
+bayes_classifier = function(x) {
+  ifelse(r(x) > 0.5, 1, 0)  # Classify as 1 if r(x) > 0.5, else 0
+}
+```
+
+```{r}
+m = 10000 # Number of data points per Test set
+data_test = generate_data(m) # test data
+#summary(r(data_test$x))
+
+data_test$bayes_pred = bayes_classifier(data_test$x)
+# Bayes Classifier
+confusion_matrix = table(Predicted = data_test$bayes_pred, Actual = data_test$y)  
+accuracy_bayes = sum(diag(confusion_matrix)) / nrow(data_test) 
+print(confusion_matrix)
+print(accuracy_bayes)  
+```
+The Bayes classifier perfectly predicts all positive cases (Y=1) as Y=1, which is why there are no false negatives (FN=0).
+However, it misclassifies a portion of Y=0 cases as Y=1, leading to some false positives (FP=2529)
+
+```{r}
+# Classification results 
+data_test$classification_bayes = with(data_test, ifelse(
+  bayes_pred == 1 & y == 1, "TP",
+  ifelse(bayes_pred == 0 & y == 0, "TN",
+         ifelse(bayes_pred == 1 & y == 0, "FP", "FN"))))
+
+ggplot(data_test, aes(x = x, y = as.factor(y))) +
+  geom_point(aes(color = classification_bayes)) +
+  stat_function(fun = bayes_classifier, color = "black", linetype = "dashed", size = 1) + 
+  labs(
+    title = "Bayes Classifier Decision Boundary",
+    x = "X (Feature)",
+    y = "Y (Class)",
+    color = "Classification\n(Bayes)"
+  ) +
+  scale_color_manual(values = c("TP" = "blue", "TN" = "green", "FP" = "orange", "FN" = "red")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+
+Regarding the following discussion lead us to some doubts: https://elearning.uniroma1.it/mod/forum/discuss.php?d=246287
+
+First of all the claims done were wrong, we prove it empirically and theorically:
+```{r}
+set.seed(2)
+# Range of thresholds
+threshold_values <- seq(0.25, 0.75, by = 0.05)
+
+# Store results
+results <- data.frame(Threshold = numeric(), Accuracy = numeric())
+
+# Iterate through each threshold and compute accuracy
+for (thresh in threshold_values) {
+  data_test$bayes_pred <- ifelse(r(data_test$x) > thresh, 1, 0) 
+  accuracy <- sum(data_test$bayes_pred == data_test$y) / nrow(data_test) 
+  results <- rbind(results, data.frame(Threshold = thresh, Accuracy = accuracy))
+}
+
+print(results)
+```
+We observe two distinct levels of accuracy:
+- for thresholds below 0.5
+- for thresholds 0.5 and above
+The value of one section is either higher or lower than the other according by the seed choice.
+
+The sudden change from one section to the other occurs precisely at 0.5, indicating that the decision boundary at x=1, derived analytically, is indeed the optimal threshold in terms of accuracy.
+
+Why this happen?? In case II we have computed this:
+$$
+\text{If} \quad  x \in [-1, 1] , \text{ then:} \quad p(x \mid Y = 0) = \frac{1}{4}, \quad p(x \mid Y = 1) = \frac{1}{4}
+$$
+
+$$
+r(x) = \frac{\frac{1}{4}}{\frac{1}{4} + \frac{1}{4}} = \frac{0.5}{1} = 0.5 \Rightarrow P(Y = 1 \mid X = x) = 0.5
+$$
+So this is the region where changing the threshold redistributes errors between false positives (FP) and false negatives (FN), but does not improve accuracy.
+
+The threshold does not change the total number of mistakes but only moves errors from one category (FP) to another (FN). To be more clear the section with thresholds 0.5 and above minimize FP to 0, while the other section minimize FN to 0, setting our decision boundary to x=-1
+
+- Apply any other practical classifier of your choice to these data and comparatively comment its performance (with respect to those of the Bayes classifiers). Of course those n training data should be used for training and validation too (in case there are tuning-parameters).
+
+Initially we used a CV approach: We have a limited amount of data and we needed un unbiased estimate of performance before final testing to reduce overfitting to a single train-test split
+
+After carefully reading the following discussion:
+
+https://elearning.uniroma1.it/mod/forum/discuss.php?d=247114
+
+The possibility to add an additional fixed evaluation set, where m is the number of data points for test set that we set to 10000 to realistically measures generalization.
+The choice of m depends on the trade-off between variance and computational efficiency.
+A larger test set m reduces the variance of this estimate, giving a more stable and accurate performance measure, that empirically will converge to the true expected accuracy of the classifier.
+
+Since we are working with a simple one-dimensional feature space
+$$
+X \in \mathbb{R}
+$$
+n=1000 is already sufficient for training many simple models (e.g., logistic regression, decision trees).
+
+```{r}
+# Training Data
+data_train = generate_data(n) 
+
+# Logistic regression for comparison
+logit_model = glm(y ~ x, data = data_train, family = binomial)
+data_test$logit_prob = predict(logit_model, newdata = data_test, type = "response")
+data_test$logit_pred = ifelse(data_test$logit_prob > 0.5, 1, 0)
+
+confusion_matrix_logit = table(Predicted = data_test$logit_pred, Actual = data_test$y)  
+accuracy_logit = sum(diag(confusion_matrix_logit)) / nrow(data_test)  
+print(confusion_matrix_logit)
+print(accuracy_logit) 
+```
+Logistic regression makes a trade-off between false positives and false negatives, performing better in identifying Y=0 correctly compared to Bayes.
+
+```{r}
+logit_decision_boundary <- -coef(logit_model)[1] / coef(logit_model)[2]  
+
+# Classification results 
+data_test$classification_logit <- with(data_test, ifelse(
+  logit_pred == 1 & y == 1, "TP",
+  ifelse(logit_pred == 0 & y == 0, "TN",
+         ifelse(logit_pred == 1 & y == 0, "FP", "FN"))))
+
+ggplot(data_test, aes(x = x, y = as.factor(y), color = classification_logit)) +
+  geom_point(size = 2, alpha = 0.7) + 
+  geom_vline(xintercept = logit_decision_boundary, color = "black", linetype = "dashed") +
+  labs(
+    title = "Logistic Regression Classifier Decision Boundary",
+    x = "X (Feature)",
+    y = "Y (Class)",
+    color = "Classification\n(Logistic)"
+  ) +
+  scale_color_manual(values = c("TP" = "blue", "TN" = "green", "FP" = "orange", "FN" = "red")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+By a theorical point of view, Logistic Regression, since being a data-driven model, perform better with limited data or noisy data, it smooth out the decision boundary providing a better trade off between Precision and Recall. The Bayes Classifier instead depends on knowing the exact distributions of X|Y, and in reality this happens really rarely! It maximize the true positive rate (TPR) at the cost of false positives (FP)
+
+
+```{r}
+ggplot(data_test, aes(x = x)) +
+  geom_point(aes(y = logit_prob, color = "Logistic Regression"), alpha = 0.5) +
+  stat_function(fun = r, aes(color = "Bayes Optimal r(x)"), size = 1.2) +
+  labs(title = "Estimated Probabilities vs. Bayes r(x)",
+       x = "X", y = "P(Y = 1 | X)") +
+  scale_color_manual(values = c("Logistic Regression" = "red", "Bayes Optimal r(x)" = "blue")) +
+  theme_minimal()
+```
+- The Bayes classifier is deterministic given the problem setup(there are sharp transitions at x=−1 and x=1, where the probability suddenly jumps).
+- Logistic Regression assumes a smooth probability transition because it models P(Y=1∣X) using a sigmoid function, making it more robust in real-world scenarios where exact distributions are unknown.
+
+
+##### 3. Since you are simulating the data, you can actually see what happens in repeated sampling. Hence, repeat the sampling
+M = 10000 times keeping n = 1000 fixed (a simple for-loop will do it), and redo the comparison. Who’s the best now?
+Comment.
+
+Our results match theory, but does it for all batches? I am gonna try to answer also this question just out of curiosity
+
+```{r}
+# Repeat sampling M times
+M = 10000 # Repetitions
+bayes_accuracies = numeric(M)  
+logit_accuracies <- numeric(M) 
+m = 10000
+  
+for (i in 1:M) {
+  # Generate TRAINING data 
+  y_train = rbinom(n, 1, 0.5)
+  x_train = ifelse(y_train == 0, runif(n, -3, 1), runif(n, -1, 3))
+  data_train = data.frame(x = x_train, y = y_train)
+
+  # Generate TEST data 
+  y_test = rbinom(m, 1, 0.5)
+  x_test = ifelse(y_test == 0, runif(m, -3, 1), runif(m, -1, 3))
+  data_test = data.frame(x = x_test, y = y_test)
+
+  # Bayes Classifier
+  predicted_bayes = bayes_classifier(data_test$x)  
+  bayes_accuracies[i] = mean(predicted_bayes == data_test$y)  
+
+  # Logistic Regression
+  logit_model = glm(y ~ x, data = data_train, family = binomial)  
+  data_test$logit_prob = predict(logit_model, newdata = data_test, type = "response")  
+  data_test$logit_pred = ifelse(data_test$logit_prob > 0.5, 1, 0)  
+  logit_accuracies[i] = mean(data_test$logit_pred == data_test$y)  
+
+# Edit: incredible how R is slow to perform for loops
+}
+mean(bayes_accuracies)
+mean(logit_accuracies) 
+```
+```{r}
+sd(bayes_accuracies)
+sd(logit_accuracies) 
+```
+
+Over repeated simulations, on average the performance are similar,  probably with a greater value of n(# Data points) and/or of M(# Repetition for simulation) they should converge to the same accuracy score (logistic regression will increasingly approximate the true distributions, approaching Bayes' optimal performance).
+
+Interesting is that, at first glance, thanks to a lucky seed, we could had preferred the Bayes Classifier over the Logistic one, instead empirical results showed closer results that moreover claim that the Logistic Classifier slightly overperform the Bayesian one
+
+
+```{r}
+#   ∫ min(P(Y=0) * f0(x), P(Y=1) * f1(x)) dx
+# Since P(Y=0) = P(Y=1) = 0.5, we compute:
+#   ∫ min(0.5 * f0(x), 0.5 * f1(x)) dx
+integrand =  function(x) pmin(0.5 * f0(x), 0.5 * f1(x))
+
+# Compute the Bayes error using numerical integration
+bayes_error = integrate(integrand, lower = -1, upper = 1)$value
+# We integrate only over the region where the two densities overlap (-1,1).
+
+theoretical_bayes_accuracy =  1 - bayes_error
+
+bayes_error
+theoretical_bayes_accuracy
+```
+Empirical results match the theorical one 
+
+```{r}
+library(ggplot2)
+
+accuracy_df = data.frame(
+  Accuracy = c(bayes_accuracies, logit_accuracies),
+  Model = rep(c("Bayes Classifier", "Logistic Regression"), each = num_trials)
+)
+
+ggplot(accuracy_df, aes(x = Accuracy, fill = Model)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Distribution of Accuracy Scores", x = "Accuracy", y = "Density") +
+  theme_minimal()
+
+```
+
+The distribution is centered around the mean and the value of standard deviation are quite low;
+using a test set derived by the same distribution but with a larger number of data points allowed us to have pretty consistent results
+
+Just out of curiosity, at first glance both the scores seams to follow a normal distribution as evidenced by the bell-shaped curve and symmetry, but is that really true?
+
+We check with the Shapiro-Wilk normality test
+```{r}
+ks.test(bayes_accuracies, "pnorm", mean = mean(bayes_accuracies), sd = sd(bayes_accuracies))
+ks.test(logit_accuracies, "pnorm", mean = mean(logit_accuracies), sd = sd(logit_accuracies))
+```
+Both the tests reject the null hypothesis that the data follows a normal distribution.
+
+This test is highly sensitive to small deviations from normality, especially for large sample sizes, in fact even if distributions seams very close to normal, both the p-value are <0.05, so we reject the null hypothesis of normality, indicating that both the distribution are not normal
+```{r}
+qqnorm(bayes_accuracies, main = "QQ Plot - Bayes Classifier Accuracy", col = "green")
+qqline(bayes_accuracies,lwd = 2)
+
+qqnorm(logit_accuracies, main = "QQ Plot - Logistic Regression Accuracy", col = "green")
+qqline(logit_accuracies, lwd = 2)
+```
+QQPlot confirm the test results, since the data points at both tails doesn't follow the diagonal line. Anyway those empirical results confirm approximate normality (almost normal behavior)
+
+The Central Limit Theorem ensures convergence to normality for accuracy scores, given the large number of Monte Carlo repetitions.
+
+But why we did all this? Well first of all we just proved empirically what we studied in theory:
+- Since errors are tied to discrete cutoffs of uniform distributions, the empirical accuracy distribution can exhibit small skewness or deviations from normality, anyway Monte Carlo estimates of accuracy become approximately normal regardless of those small deviations.
+- Logistic regression assumes a sigmoid probability function, which means the decision boundary is smoother, in fact since being data driven in this case with a infinite number of data points the distribution converge to a normal distribution
+
+In our case, we have "relatively easily distributed data" so we can assume normality but in real scenario this doesn't usually happen and it's important to take this into consideration:
+- Standard confidence intervals (Mean ± SE) may slightly underestimate uncertainty.
+- Bootstrap confidence intervals or percentile-based confidence intervals might be more reliable.
+
+```{r}
+mean_bayes = mean(bayes_accuracies)
+mean_logit = mean(logit_accuracies)
+std_err_bayes = sd(bayes_accuracies) / sqrt(length(bayes_accuracies))
+std_err_logit = sd(logit_accuracies) / sqrt(length(logit_accuracies))
+
+# Compute Confidence Interval (95% Normal Approximation)
+ci_bayes_lower = mean_bayes - 1.96 * std_err_bayes
+ci_bayes_upper = mean_bayes + 1.96 * std_err_bayes
+
+ci_logit_lower = mean_logit - 1.96 * std_err_logit
+ci_logit_upper = mean_logit + 1.96 * std_err_logit
+
+cat("Bayes Normal CI:", round(ci_bayes_lower, 5), round(mean_bayes, 5), round(ci_bayes_upper, 5), "\n")
+cat("Logistic Regression Normal CI:", round(ci_logit_lower, 5), round(mean_logit, 5), round(ci_logit_upper, 5), "\n")
+```
+```{r}
+B <- 10000  # Number of bootstrap samples
+
+# Resampling and computing bootstrap means
+boot_bayes = replicate(B, mean(sample(bayes_accuracies, replace = TRUE)))
+boot_logit = replicate(B, mean(sample(logit_accuracies, replace = TRUE)))
+
+# Compute 2.5% and 97.5% quantiles (Bootstrap CI)
+ci_bayes_boot_lower = quantile(boot_bayes, 0.025)
+ci_bayes_boot_upper = quantile(boot_bayes, 0.975)
+
+ci_logit_boot_lower = quantile(boot_logit, 0.025)
+ci_logit_boot_upper = quantile(boot_logit, 0.975)
+
+cat("Bayes Bootstrap CI:", round(ci_bayes_boot_lower, 5), round(mean_bayes, 5), round(ci_bayes_boot_upper, 5), "\n")
+cat("Logistic Regression Bootstrap CI:", round(ci_logit_boot_lower, 5), round(mean_logit, 5), round(ci_logit_boot_upper, 5), "\n")
+
+```
+There is no difference in our results from the two differents method but it's important to provide significative explanation to every step done to include the reader into the workflow and the thinking process that led us to our final solution
+
+
+# When Brutti and Spinelli collide: Part 2 + 3
+
+### 1. The Problem
+
+We observe two independent samples of size n and m respectively:
+$$
+\{ {X}_1, \dots, {X}_n \} \overset{\text{iid}}{\sim} F_{{X}}
+\quad \text{and} \quad
+\{ {Y}_1, \dots, {Y}_m \} \overset{\text{iid}}{\sim} F_{{Y}}.
+$$
+Please notice that, in general, these are random vectors.
+The problem is to test the null hypothesis
+$$
+H_0: F_{{X}} = F_{{Y}}
+\quad \text{vs} \quad
+H_1: F_{{X}} \neq F_{{Y}}.
+$$
+```{r}
+# Load the dataset
+load("C:/Users/emanu/OneDrive/Desktop/1stSemester_DS_Sapienza/SDS/Exams/hw_data.RData")
+
+```
+
