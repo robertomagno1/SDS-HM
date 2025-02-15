@@ -1,0 +1,262 @@
+---
+title: "Friedman’s Classifier-Based Two-Sample Test: Zone-2 vs Zone-3, Extended Null Discussion"
+author: "Roberto Magno Mazzotta"
+date: "`r Sys.Date()`"
+output: html_notebook
+---
+
+
+
+```{r}
+# Data manipulation
+library(dplyr)
+library(tidyr)
+
+# Classification and modeling
+library(caret)    # for data splitting and confusionMatrix
+library(glmnet)   # for regularized logistic regression (binary or multinomial)
+library(e1071)    # confusionMatrix (alternative if needed)
+
+# Visualization
+library(ggplot2)
+
+# Nonparametric tests
+library(stats)
+
+# Reproducibility
+set.seed(123)
+
+# Example:
+# load("hw_data.RData")
+# dim(hw)
+# head(hw)
+# table(hw$y)
+
+```
+
+```{r}
+#3. Embedding the Speed-Altitude Data (Feature Extraction)
+
+
+# Filter data to keep only Zone-2 and Zone-3
+hw_bin <- hw %>%
+  filter(y %in% c("Zone-2", "Zone-3")) %>%
+  mutate(y_bin = ifelse(y == "Zone-2", 0, 1))
+
+table(hw_bin$y_bin)
+
+
+```
+
+
+```{r}
+
+###3.2 Feature Extraction Function
+
+
+
+
+extract_features <- function(row_data, speed_cols, altitude_cols){
+  # Convert columns to numeric vectors
+  sp_values <- as.numeric(row_data[speed_cols])
+  al_values <- as.numeric(row_data[altitude_cols])
+  
+  # If all NA, skip
+  if(all(is.na(sp_values)) || all(is.na(al_values))){
+    return(NULL)
+  }
+  
+  # Speed features
+  mean_sp   <- mean(sp_values, na.rm=TRUE)
+  median_sp <- median(sp_values, na.rm=TRUE)
+  sd_sp     <- sd(sp_values, na.rm=TRUE)
+  min_sp    <- min(sp_values, na.rm=TRUE)
+  max_sp    <- max(sp_values, na.rm=TRUE)
+  range_sp  <- max_sp - min_sp
+  diff_sp   <- sp_values[length(sp_values)] - sp_values[1]
+  slope_sp  <- coef(lm(sp_values ~ I(1:length(sp_values))))[2]  # slope over time
+  
+  # Altitude features
+  mean_al   <- mean(al_values, na.rm=TRUE)
+  median_al <- median(al_values, na.rm=TRUE)
+  sd_al     <- sd(al_values, na.rm=TRUE)
+  min_al    <- min(al_values, na.rm=TRUE)
+  max_al    <- max(al_values, na.rm=TRUE)
+  range_al  <- max_al - min_al
+  diff_al   <- al_values[length(al_values)] - al_values[1]
+  slope_al  <- coef(lm(al_values ~ I(1:length(al_values))))[2]
+  
+  # Correlation between speed & altitude
+  corr_sp_al <- cor(sp_values, al_values, use="complete.obs")
+  
+  # Compile into one data frame row
+  feats <- data.frame(
+    mean_sp = mean_sp,
+    median_sp = median_sp,
+    sd_sp = sd_sp,
+    min_sp = min_sp,
+    max_sp = max_sp,
+    range_sp = range_sp,
+    diff_sp = diff_sp,
+    slope_sp = slope_sp,
+    mean_al = mean_al,
+    median_al = median_al,
+    sd_al = sd_al,
+    min_al = min_al,
+    max_al = max_al,
+    range_al = range_al,
+    diff_al = diff_al,
+    slope_al = slope_al,
+    corr_sp_al = corr_sp_al
+  )
+  
+  return(feats)
+}
+
+```
+
+
+```{r}
+## 3.3 Apply Feature Extraction to All Rows
+speed_cols <- grep("^sp\\.", names(hw_bin), value=TRUE)
+altitude_cols <- grep("^al\\.", names(hw_bin), value=TRUE)
+
+# Extract
+feature_list <- lapply(1:nrow(hw_bin), function(i){
+  extract_features(hw_bin[i,], speed_cols, altitude_cols)
+})
+
+# Combine into single data frame
+feature_data <- do.call(rbind, feature_list)
+
+# Attach the binary label
+feature_data$y_bin <- hw_bin$y_bin
+
+# Remove rows with NA if any
+feature_data <- feature_data %>% drop_na()
+
+dim(feature_data)
+head(feature_data)
+table(feature_data$y_bin)
+
+```
+
+
+```{r}
+###4. Classification and Friedman’s Two-Sample Test
+### 4.1 Train/Test Split
+# Convert outcome to factor
+feature_data$y_bin <- factor(feature_data$y_bin, levels = c(0,1))
+
+set.seed(123)
+train_index <- createDataPartition(feature_data$y_bin, p=0.7, list=FALSE)
+train_df <- feature_data[train_index, ]
+test_df  <- feature_data[-train_index, ]
+
+```
+
+
+```{r}
+
+
+#4.2 Train a Binary Classifier
+#Here we use logistic regression via glmnet, but we could pick SVM, random forest, etc.
+
+model_fit <- train(
+  y_bin ~ ., 
+  data = train_df,
+  method = "glmnet",
+  family = "binomial"
+)
+
+# Show summary
+model_fit
+
+
+```
+
+```{r}
+#4.3 Predicted Probabilities & Two-Sample Test
+#Following Friedman’s approach:
+
+# 1 Obtain predicted probabilities of class 1 for the test set.
+# 2 Split these probabilities into two groups (true labels = 0 vs 1).
+# 3 Perform, say, Mann-Whitney and Kolmogorov-Smirnov tests on these two sets of scores.
+
+# Predicted probabilities for class 1
+prob_scores <- predict(model_fit, newdata=test_df, type="prob")[,2]
+true_labels <- test_df$y_bin
+
+scores_0 <- prob_scores[true_labels == 0]
+scores_1 <- prob_scores[true_labels == 1]
+
+# Mann-Whitney / Wilcoxon rank-sum
+mw_result <- wilcox.test(scores_0, scores_1)
+
+# Kolmogorov-Smirnov
+ks_result <- ks.test(scores_0, scores_1)
+
+cat("Mann-Whitney p-value:", mw_result$p.value, "\n")
+cat("Kolmogorov-Smirnov p-value:", ks_result$p.value, "\n")
+
+alpha <- 0.05
+if(mw_result$p.value < alpha){
+  cat("MW => Reject H0 (Zone-2 != Zone-3)\n")
+} else {
+  cat("MW => Fail to reject H0\n")
+}
+
+if(ks_result$p.value < alpha){
+  cat("KS => Reject H0 (Zone-2 != Zone-3)\n")
+} else {
+  cat("KS => Fail to reject H0\n")
+}
+
+```
+
+
+
+
+```{r}
+#4.4 Classification Performance (Confusion Matrix)
+
+
+pred_class <- predict(model_fit, newdata=test_df)
+conf_mat <- confusionMatrix(pred_class, test_df$y_bin)
+conf_mat
+
+```
+
+```{r}
+
+
+#4.5 Visualizing Probability Distributions (Optional)
+#To complement numeric tests, we can visually compare the distribution of predicted scores for each class. For instance, we can create a boxplot or density plot:
+
+
+plot_df <- data.frame(
+  score = prob_scores,
+  label = factor(true_labels, levels=c(0,1), labels=c("Zone-2", "Zone-3"))
+)
+
+```
+
+
+
+```{r}
+
+ggplot(plot_df, aes(x=label, y=score, fill=label)) +
+  geom_boxplot(alpha=0.6) +
+  labs(title="Distribution of Predicted Probabilities", y="P(Class=1)", x="True Class") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
