@@ -2,16 +2,13 @@
 title: "HW1"
 author: "Emanuele Iaccarino"
 date: "`r Sys.Date()`"
-output: 
-  pdf_document:
-    keep_tex: true
-header-includes:
-  - \usepackage{times}
-  - \usepackage[top=2cm, bottom=2cm, left=2cm, right=2cm]{geometry}
+output: pdf_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+```{r, include=FALSE}
+#knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+#tinytex::install_tinytex()
+#tinytex::is_tinytex()
 ```
 
 # Part 1: When Brutti and Spinelli collide
@@ -217,7 +214,6 @@ ggplot(data, aes(x = x, y = y)) +
 This plot shows the data points we geneerated and r(x) function used as decision rule for Bayes classifier
 
 - Evaluate the performance of the Bayes Classifiers η*(x) on this simple (only 1 feature!) data
-
 ```{r}
 # Bayes classification rule
 bayes_classifier = function(x) {
@@ -379,8 +375,6 @@ ggplot(data_test, aes(x = x)) +
 M = 10000 times keeping n = 1000 fixed (a simple for-loop will do it), and redo the comparison. Who’s the best now?
 Comment.
 
-Our results match theory, but does it for all batches? I am gonna try to answer also this question just out of curiosity
-
 ```{r}
 # Repeat sampling M times
 M = 10000 # Repetitions
@@ -418,11 +412,9 @@ mean(logit_accuracies)
 sd(bayes_accuracies)
 sd(logit_accuracies) 
 ```
-
 Over repeated simulations, on average the performance are similar,  probably with a greater value of n(# Data points) and/or of M(# Repetition for simulation) they should converge to the same accuracy score (logistic regression will increasingly approximate the true distributions, approaching Bayes' optimal performance).
 
-Interesting is that, at first glance, thanks to a lucky seed, we could had preferred the Bayes Classifier over the Logistic one, instead empirical results showed closer results that moreover claim that the Logistic Classifier slightly overperform the Bayesian one
-
+Running Montecarlo repetitions reduce the variability caused by the seed choice, in fact this could have been misleading (in our first trial Bayes slightly overperform Logistic in term of accuracy, so we could have possibly wrongly claimed that one is better than the other) 
 
 ```{r}
 #   ∫ min(P(Y=0) * f0(x), P(Y=1) * f1(x)) dx
@@ -446,7 +438,7 @@ library(ggplot2)
 
 accuracy_df = data.frame(
   Accuracy = c(bayes_accuracies, logit_accuracies),
-  Model = rep(c("Bayes Classifier", "Logistic Regression"), each = num_trials)
+  Model = rep(c("Bayes Classifier", "Logistic Regression"), each = M)
 )
 
 ggplot(accuracy_df, aes(x = Accuracy, fill = Model)) +
@@ -459,6 +451,15 @@ ggplot(accuracy_df, aes(x = Accuracy, fill = Model)) +
 The distribution is centered around the mean and the value of standard deviation are quite low;
 using a test set derived by the same distribution but with a larger number of data points allowed us to have pretty consistent results
 
+I am really fussy so we perform a paired t-test to determine if there is a statistically significant difference in their accuracy.
+```{r}
+# Paired T-Test
+t_test_result <- t.test(bayes_accuracies, logit_accuracies, paired = TRUE)
+print(t_test_result)
+```
+P value suggest us that we fail to reject the null hypothesis, meaning there is no significant difference in accuracy between the two classifiers.
+t-value and confidence interval confirming that any observed difference in accuracy is negligible.
+
 Just out of curiosity, at first glance both the scores seams to follow a normal distribution as evidenced by the bell-shaped curve and symmetry, but is that really true?
 
 We check with the Shapiro-Wilk normality test
@@ -466,9 +467,9 @@ We check with the Shapiro-Wilk normality test
 ks.test(bayes_accuracies, "pnorm", mean = mean(bayes_accuracies), sd = sd(bayes_accuracies))
 ks.test(logit_accuracies, "pnorm", mean = mean(logit_accuracies), sd = sd(logit_accuracies))
 ```
-Both the tests reject the null hypothesis that the data follows a normal distribution.
+Both the tests not reject the null hypothesis that the data follows a normal distribution.
 
-This test is highly sensitive to small deviations from normality, especially for large sample sizes, in fact even if distributions seams very close to normal, both the p-value are <0.05, so we reject the null hypothesis of normality, indicating that both the distribution are not normal
+This test is highly sensitive to small deviations from normality, especially for large sample sizes, despite that, since we computed accuracy as an average over multiple runsit is expected that the empirical distribution of accuracy will approximate a normal distribution due to the CLT (Central Limit Theorem).
 ```{r}
 qqnorm(bayes_accuracies, main = "QQ Plot - Bayes Classifier Accuracy", col = "green")
 qqline(bayes_accuracies,lwd = 2)
@@ -476,13 +477,15 @@ qqline(bayes_accuracies,lwd = 2)
 qqnorm(logit_accuracies, main = "QQ Plot - Logistic Regression Accuracy", col = "green")
 qqline(logit_accuracies, lwd = 2)
 ```
-QQPlot confirm the test results, since the data points at both tails doesn't follow the diagonal line. Anyway those empirical results confirm approximate normality (almost normal behavior)
+QQPlot confirm the test results, even though the data points at both tails doesn't follow precisely the diagonal line. Anyway those empirical results confirm approximate normality (almost normal behavior)
 
 The Central Limit Theorem ensures convergence to normality for accuracy scores, given the large number of Monte Carlo repetitions.
 
 But why we did all this? Well first of all we just proved empirically what we studied in theory:
 - Since errors are tied to discrete cutoffs of uniform distributions, the empirical accuracy distribution can exhibit small skewness or deviations from normality, anyway Monte Carlo estimates of accuracy become approximately normal regardless of those small deviations.
 - Logistic regression assumes a sigmoid probability function, which means the decision boundary is smoother, in fact since being data driven in this case with a infinite number of data points the distribution converge to a normal distribution
+
+The plots makes everything more clear
 
 In our case, we have "relatively easily distributed data" so we can assume normality but in real scenario this doesn't usually happen and it's important to take this into consideration:
 - Standard confidence intervals (Mean ± SE) may slightly underestimate uncertainty.
@@ -505,7 +508,7 @@ cat("Bayes Normal CI:", round(ci_bayes_lower, 5), round(mean_bayes, 5), round(ci
 cat("Logistic Regression Normal CI:", round(ci_logit_lower, 5), round(mean_logit, 5), round(ci_logit_upper, 5), "\n")
 ```
 ```{r}
-B <- 10000  # Number of bootstrap samples
+B = 10000  # Number of bootstrap samples
 
 # Resampling and computing bootstrap means
 boot_bayes = replicate(B, mean(sample(bayes_accuracies, replace = TRUE)))
@@ -524,6 +527,211 @@ cat("Logistic Regression Bootstrap CI:", round(ci_logit_boot_lower, 5), round(me
 ```
 There is no difference in our results from the two differents method but it's important to provide significative explanation to every step done to include the reader into the workflow and the thinking process that led us to our final solution
 
+
+As a challenge we try to use an additional Classifier, we choosed Decision tree for its semplicity, interpretability and the additional challenge of dealing with tunable parameters
+
+```{r}
+library(rpart)
+library(rpart.plot)  # For visualizing the tree (
+# For train and test we use the same train and test set we made previously for the logistic Classifier
+
+tree_model = rpart(y ~ x, data = data_train, method = "class")
+
+data_test$tree_pred = predict(tree_model, newdata = data_test, type = "class")
+
+tree_accuracy = mean(data_test$tree_pred == data_test$y)
+tree_accuracy
+```
+Decision Trees are prone to overfitting, so tuning is crucial.
+```{r}
+?rpart.control 
+```
+Key parameters in rpart:
+
+- cp (Complexity Parameter: Controls tree growth. Higher values = smaller trees (prevents overfitting).
+- minsplit: Minimum number of observations in a node before splitting.
+- minbucket: Minimum number of observations in a terminal node (leaf).
+- maxdepth: Maximum depth of the tree. Limits complexity.
+- method: Splitting criterion (gini or entropy-based)
+
+To maximize the performance of our Decision Tree based Classifier we need to find the best possible combination of hyperparameters, we simulated a Grid Search approach (available on Python but I didn't find it in R). Anyway we set a grid of values for each hyperparameter we mentioned before (according to prior knowledge and assumption regarding the simplicity of the dataset), we are gonna train and test the model
+```{r}
+# Number is how many different values we can have for a specific hyperparameter
+cp = 10 
+min_split = 5 
+max_depth = 6
+method = 2
+cp * min_split * max_depth * method
+```
+and return the combination of hyperparameters that produced the highest accuracy score
+
+Edit: the solution applied for MonteCarlo (using 100% of n as train and test on a new set of data generated by a similar distribution) solved an other problem: In this case we would have needed CV to not base the tuning process on the uncertanty of the split derived by a certain seed, moreover the training time would have been higher. 
+CV is typically used when we need to estimate out-of-sample performance from limited data, which is not the case anymore here.
+
+```{r}
+# Define hyperparameter grid
+tune_grid <- expand.grid(
+  cp = seq(0.001, 0.05, by = 0.005),  # Complexity parameter (pruning)
+  minsplit = c(5, 10, 20, 30, 50),    # Minimum samples per split
+  maxdepth = c(2, 3, 4, 5, 6, 7),     # Maximum tree depth
+  method = c("gini", "information")   # Splitting criterion
+)
+
+results <- expand.grid(cp = numeric(), minsplit = numeric(), maxdepth = numeric(), method = character(), Accuracy = numeric())
+
+# Grid search
+for (i in 1:nrow(tune_grid)) {
+  
+  # Train Decision Tree with given parameters
+  tree_model <- rpart(y ~ x, data = data_train, method = "class",
+                      parms = list(split = tune_grid$method[i]), 
+                      control = rpart.control(
+                                        cp = tune_grid$cp[i], 
+                                        minsplit = tune_grid$minsplit[i], 
+                                        maxdepth = tune_grid$maxdepth[i]))
+
+  predictions <- predict(tree_model, newdata = data_test, type = "class")
+  accuracy <- mean(predictions == data_test$y)
+  
+  results <- rbind(results, data.frame(
+    cp = tune_grid$cp[i], 
+    minsplit = tune_grid$minsplit[i], 
+    maxdepth = tune_grid$maxdepth[i], 
+    method = tune_grid$method[i],
+    Accuracy = accuracy
+  ))
+}
+
+best_model <- results %>% arrange(desc(Accuracy)) %>% slice(1)
+print(best_model)
+
+```
+Now we can Train Final Model with Best Parameters
+```{r}
+best_cp = best_model$cp
+best_minsplit = best_model$minsplit
+best_maxdepth = best_model$maxdepth
+
+final_tree_model = rpart(y ~ x, data = data_train, method = "class",
+                          control = rpart.control(cp = best_cp, 
+                          minsplit = best_minsplit, 
+                          maxdepth = best_maxdepth))
+
+data_test$final_tree_pred = predict(final_tree_model, newdata = data_test, type = "class")
+
+final_tree_accuracy = mean(data_test$final_tree_pred == data_test$y)
+final_tree_accuracy
+
+conf_matrix_simple = table(Predicted = data_test$final_tree_pred, Actual = data_test$y)
+
+print(conf_matrix_simple)
+```
+CV allowed us to maximize the 
+```{r}
+rpart.plot(final_tree_model, main = "Decision Tree Visualization")
+```
+
+```{r}
+x_seq = seq(-3, 3, length.out = 1000)
+preds = predict(tree_model, newdata = data.frame(x = x_seq), type = "class")
+
+plot(data_train$x, data_train$y, col = as.numeric(data_train$y)+2,
+     main = "Decision Tree Decision Boundary", xlab = "X", ylab = "Class (Y)")
+abline(v = x_seq[which(diff(as.numeric(preds)) != 0)], col = "red", lwd = 2, lty = 2)
+
+```
+The decision boundaries correspond to the splitting thresholds found in the tree visualization(In this case we have more than one decision boundary that indicate the split points where the Decision Tree partitions the feature space)
+
+```{r}
+tree_accuracies = numeric(M)
+# Monte Carlo Loop
+for (i in 1:M) {
+  data_train = generate_data(n)
+  data_test = generate_data(m)
+
+  tree_model = rpart(y ~ x, data = data_train, method = "class",
+                     control = rpart.control(
+                                              cp = best_cp, 
+                                              minsplit = best_minsplit, 
+                                              maxdepth = best_maxdepth))
+
+    tree_pred = predict(tree_model, newdata = data_test, type = "class")
+  tree_accuracies[i] = mean(tree_pred == data_test$y)
+}
+```
+
+```{r}
+mean_tree_acc = mean(tree_accuracies)
+se_tree_acc = sd(tree_accuracies) / sqrt(M)
+
+ci_tree_lower = mean_tree_acc - 1.96 * se_tree_acc
+ci_tree_upper = mean_tree_acc + 1.96 * se_tree_acc
+
+cat("Decision Tree Mean Accuracy:", round(mean_tree_acc, 5), "\n")
+cat("95% Confidence Interval:", round(ci_tree_lower, 5), "-", round(ci_tree_upper, 5), "\n")
+```
+Interesting to see how MonteCarlo simulations on Decision Tree Classifier led to the lowest Accuracy score among the 3 classifiers we tested, with the upper bound not even reaching the 
+
+
+```{r}
+library(pROC)   # For ROC curve
+
+data_test$bayes_prob  = r(data_test$x)  # Probabilities from Bayes Rule
+
+data_test$logit_prob = predict(logit_model, newdata = data_test, type = "response") # Logistic Regression Probabilities
+
+tree_probs = predict(final_tree_model, newdata = data_test, type = "prob")
+data_test$tree_prob = tree_probs[,2]  # Take probability of class "1"
+
+roc_bayes = roc(data_test$y, data_test$bayes_prob)
+roc_logit = roc(data_test$y, data_test$logit_prob)
+roc_tree = roc(data_test$y, data_test$tree_prob)
+
+auc_baye = auc(roc_bayes)
+auc_logit = auc(roc_logit)
+auc_tree = auc(roc_tree)
+
+cat("auc_bayes", auc_bayes, "\n")
+cat("auc_logit", auc_logit, "\n")
+cat("auc_tree", auc_tree, "\n")
+
+```
+```{r}
+# Plot
+ggplot() +
+  geom_line(aes(x = roc_bayes$specificities, y = roc_bayes$sensitivities, color = "Bayes Classifier")) +
+  geom_line(aes(x = roc_logit$specificities, y = roc_logit$sensitivities, color = "Logistic Regression")) +
+  geom_line(aes(x = roc_tree$specificities, y = roc_tree$sensitivities, color = "Decision Tree")) +
+  labs(title = "ROC Curve Comparison",
+       x = "1 - Specificity (False Positive Rate)",
+       y = "Sensitivity (True Positive Rate)") +
+  scale_color_manual(values = c("Bayes Classifier" = "blue",
+                                "Logistic Regression" = "red",
+                                "Decision Tree" = "green")) +
+  theme_minimal()
+```
+Initially, all three models maintain a high sensitivity (~1.0) with low false positives.
+As the threshold is adjusted, the models begin trading off sensitivity for specificity.
+
+We want to extend the paired t-test to compare all three classifiers.
+since we have three dependent accuracy scores for each iteration, we can't use the same paired t-test done previously, but there are 2 options:
+- Paired one-way ANOVA (Repeated Measures ANOVA): tells us if there's a difference 
+```{r}
+library(tidyr)
+
+accuracy_df = data.frame(
+  Iteration = rep(1:M, times = 3),
+  Model = rep(c("Bayes", "Logistic", "Tree"), each = M),
+  Accuracy = c(bayes_accuracies, logit_accuracies, tree_accuracies)
+)
+
+# Perform Repeated Measures ANOVA
+anova_result = aov(Accuracy ~ Model + Error(Iteration/Model), data = accuracy_df)
+summary(anova_result)
+```
+The ANOVA results suggest that there is no statistically significant difference between the three models' accuracy
+
+In case we would have found a difference, the test would have not told us WHERE, so we needed to switch back to Pairwise T-tests with Bonferroni Correction. Luckily it's not the case
 
 # When Brutti and Spinelli collide: Part 2 + 3
 
@@ -545,6 +753,5 @@ $$
 ```{r}
 # Load the dataset
 load("C:/Users/emanu/OneDrive/Desktop/1stSemester_DS_Sapienza/SDS/Exams/hw_data.RData")
-
 ```
 
