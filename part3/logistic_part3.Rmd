@@ -1,0 +1,340 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+```{r}
+# Load the data
+```
+
+
+```{r}
+load("/Users/jacopocaldana/Downloads/hw_data.RData")
+# Variable names
+```
+
+
+```{r}
+names(hw)
+table(hw$y)
+```
+
+```{r}
+extract_features_one <- function(row_data, speed_cols, altitude_cols) {
+  # Estraiamo i valori delle serie "speed" e "altitude"
+  sp_values <- as.numeric(row_data[speed_cols])
+  al_values <- as.numeric(row_data[altitude_cols])
+  
+  # (1) Feature su speed
+  mean_sp   <- mean(sp_values, na.rm=TRUE)
+  median_sp <- median(sp_values, na.rm=TRUE)
+  sd_sp     <- sd(sp_values, na.rm=TRUE)
+  min_sp    <- min(sp_values, na.rm=TRUE)
+  max_sp    <- max(sp_values, na.rm=TRUE)
+  range_sp  <- max_sp - min_sp
+  diff_sp   <- sp_values[length(sp_values)] - sp_values[1]
+  
+  # pendenza retta: lm(sp_values ~ tempo)
+  time_idx   <- seq_along(sp_values)
+  lm_sp      <- lm(sp_values ~ time_idx)
+  slope_sp   <- coef(lm_sp)[2]  # coeff angolare
+  
+  # (2) Feature su altitude
+  mean_al   <- mean(al_values, na.rm=TRUE)
+  median_al <- median(al_values, na.rm=TRUE)
+  sd_al     <- sd(al_values, na.rm=TRUE)
+  min_al    <- min(al_values, na.rm=TRUE)
+  max_al    <- max(al_values, na.rm=TRUE)
+  range_al  <- max_al - min_al
+  diff_al   <- al_values[length(al_values)] - al_values[1]
+  
+  time_idx2  <- seq_along(al_values)
+  lm_al      <- lm(al_values ~ time_idx2)
+  slope_al   <- coef(lm_al)[2]
+  
+  # (3) Correlazione speed-altitude (opzionale)
+  corr_sp_al <- cor(sp_values, al_values, use="complete.obs")
+  
+  # Creiamo un vettore con tutte le feature
+  feats <- c(
+    mean_sp = mean_sp,
+    median_sp = median_sp,
+    sd_sp = sd_sp,
+    min_sp = min_sp,
+    max_sp = max_sp,
+    range_sp = range_sp,
+    diff_sp = diff_sp,
+    slope_sp = slope_sp,
+    
+    mean_al = mean_al,
+    median_al = median_al,
+    sd_al = sd_al,
+    min_al = min_al,
+    max_al = max_al,
+    range_al = range_al,
+    diff_al = diff_al,
+    slope_al = slope_al,
+    
+    corr_sp_al = corr_sp_al
+  )
+  
+  return(feats)
+}
+```
+
+
+```{r}
+extract_features_all <- function(hw) {
+  # Troviamo gli indici delle colonne speed/altitude
+  speed_cols <- grep("^sp\\.", colnames(hw))
+  alt_cols   <- grep("^al\\.", colnames(hw))
+  
+  # Creiamo un dataframe vuoto per raccogliere le feature
+  n <- nrow(hw)
+  feature_list <- vector("list", n)
+  
+  # Cicliamo su ogni riga
+  for (i in 1:n) {
+    row_data <- hw[i, ]
+    feats_i  <- extract_features_one(row_data, speed_cols, alt_cols)
+    feature_list[[i]] <- feats_i
+  }
+  
+  # Convertiamo la lista di vettori in un dataframe
+  feature_df <- as.data.frame(do.call(rbind, feature_list))
+  
+  # Aggiungiamo la colonna target y
+  feature_df$y <- hw$y
+  
+  return(feature_df)
+}
+
+
+```
+```{r}
+# ESEMPIO DI USO
+ feature_data <- extract_features_all(hw)
+ head(feature_data)
+```
+```{r}
+```
+
+
+```{r}
+library(dplyr)      # Data manipulation
+library(moments)    # Skewness & kurtosis
+library(ggplot2)    # Visualization
+library(caret)      # Classification utilities
+library(glmnet)     # Regularized logistic regression
+library(tidyr)      # Handling missing values
+library(stats)      # Stats functions
+library(corrplot)   # Correlation analysis
+```
+```{r}
+# Visualizziamo le prime righe
+head(hw)
+
+# Filtriamo solo Zone-2 e Zone-3
+hw_sub <- hw %>%
+  filter(y %in% c("Zone-2", "Zone-3")) %>%
+  mutate(y = factor(y))  # convertiamo in fattore
+```
+
+
+```{r}
+table(hw_sub$y)  # Controlliamo la distribuzione
+```
+```{r}
+extract_features1 <- function(data) {
+  data %>%
+    rowwise() %>%
+    mutate(
+      speed_mean = mean(c_across(starts_with("sp.")), na.rm = TRUE),
+      speed_sd = sd(c_across(starts_with("sp.")), na.rm = TRUE),
+      speed_min = min(c_across(starts_with("sp.")), na.rm = TRUE),
+      speed_max = max(c_across(starts_with("sp.")), na.rm = TRUE),
+      speed_range = speed_max - speed_min,
+      speed_skew = skewness(c_across(starts_with("sp.")), na.rm = TRUE),
+      speed_kurtosis = kurtosis(c_across(starts_with("sp.")), na.rm = TRUE),
+      
+      alt_mean = mean(c_across(starts_with("al.")), na.rm = TRUE),
+      alt_sd = sd(c_across(starts_with("al.")), na.rm = TRUE),
+      alt_min = min(c_across(starts_with("al.")), na.rm = TRUE),
+      alt_max = max(c_across(starts_with("al.")), na.rm = TRUE),
+      alt_range = alt_max - alt_min,
+      alt_skew = skewness(c_across(starts_with("al.")), na.rm = TRUE),
+      alt_kurtosis = kurtosis(c_across(starts_with("al.")), na.rm = TRUE)
+    ) %>%
+    ungroup()
+```
+
+
+```{r}
+extract_features2 <- function(data) {
+  data %>%
+    rowwise() %>%
+    mutate(
+      mean_sp = mean(c_across(starts_with("sp.")), na.rm = TRUE),
+      sd_sp = sd(c_across(starts_with("sp.")), na.rm = TRUE),
+      min_sp = min(c_across(starts_with("sp.")), na.rm = TRUE),
+      max_sp = max(c_across(starts_with("sp.")), na.rm = TRUE),
+      range_sp = max_sp - min_sp,
+      
+      mean_al = mean(c_across(starts_with("al.")), na.rm = TRUE),
+      sd_al = sd(c_across(starts_with("al.")), na.rm = TRUE),
+      min_al = min(c_across(starts_with("al.")), na.rm = TRUE),
+      max_al = max(c_across(starts_with("al.")), na.rm = TRUE),
+      range_al = max_al - min_al,
+      
+      corr_sp_al = cor(c_across(starts_with("sp.")), 
+                       c_across(starts_with("al.")), 
+                       use = "pairwise.complete.obs", 
+                       method = "pearson")
+    ) %>%
+    ungroup()
+```
+```{r}
+dataset_features1 <- extract_features1(hw_sub)
+dataset_features2 <- extract_features2(hw_sub)
+
+# Aggiungiamo la colonna target "y"
+dataset_features1$y <- hw_sub$y
+dataset_features2$y <- hw_sub$y
+
+# Rimuoviamo eventuali righe con NA
+dataset_features1 <- dataset_features1 %>% filter(complete.cases(.))
+```
+
+
+```{r}
+dataset_features2 <- dataset_features2 %>% filter(complete.cases(.))
+```
+```{r}
+remove_collinear <- function(df, target_col = "y") {
+  # Selezioniamo solo le feature numeriche
+  df_numeric <- df %>% select(-all_of(target_col)) 
+  
+  # Rimuoviamo eventuali colonne con varianza 0
+  zero_var_cols <- caret::nearZeroVar(df_numeric)
+  if(length(zero_var_cols) > 0) {
+    df_numeric <- df_numeric[, -zero_var_cols, drop=FALSE]
+  }
+  cor_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
+  
+  # Rimuoviamo le feature con correlazione > 0.9
+  high_cor <- caret::findCorrelation(cor_matrix, cutoff = 0.9)
+  if(length(high_cor) > 0) {
+    df_numeric <- df_numeric[, -high_cor, drop = FALSE]
+  }
+  
+  # Ricostruiamo il dataframe con le feature rimaste + target
+  df_clean <- bind_cols(df_numeric, df[target_col])
+  return(df_clean)
+}
+
+dataset_features1 <- remove_collinear(dataset_features1, "y")
+dataset_features2 <- remove_collinear(dataset_features2, "y")
+```
+```{r}
+set.seed(123)  # per riproducibilità
+
+### -- Funzione di comodo per train/test logistic con glmnet --
+train_test_glmnet <- function(df, target_col="y", split_ratio=0.7) {
+  # Convertiamo la y in fattore (dovrebbe esserlo già)
+  df[[target_col]] <- factor(df[[target_col]])
+  
+  # Suddivisione train/test
+  train_idx <- sample(seq_len(nrow(df)), size = floor(split_ratio*nrow(df)))
+  train_data <- df[train_idx, ]
+  test_data  <- df[-train_idx, ]
+  
+  # Creiamo la matrice X e il vettore y (numerico 0/1)
+  y_train <- as.numeric(train_data[[target_col]]) - 1
+  y_test  <- as.numeric(test_data[[target_col]]) - 1
+  
+  x_train <- model.matrix(~ ., data=train_data %>% select(-all_of(target_col)))[, -1]
+  x_test  <- model.matrix(~ ., data=test_data %>% select(-all_of(target_col)))[, -1]
+  
+  # Fit con cross-validation
+  cv_fit <- cv.glmnet(x_train, y_train, family="binomial", alpha=1) 
+  # alpha=1 => Lasso, alpha=0 => Ridge
+  
+  # Predizioni su test
+  probs_test <- predict(cv_fit, newx=x_test, s="lambda.min", type="response")
+  pred_test  <- ifelse(probs_test>0.5, 1, 0)
+  
+  # Accuracy
+  acc <- mean(pred_test == y_test)
+  
+  return(list(model=cv_fit, accuracy=acc))
+}
+
+# Applichiamo la funzione
+res1 <- train_test_glmnet(dataset_features1, "y")
+res2 <- train_test_glmnet(dataset_features2, "y")
+
+cat("Accuracy Feature Set 1 =", res1$accuracy, "\n")
+```
+
+
+```{r}
+cat("Accuracy Feature Set 2 =", res2$accuracy, "\n")
+```
+```{r}
+friedman_classifier_test <- function(df, target_col="y", B=200) {
+  # 1. Accuracy reale (re‐fit su TUTTI i dati per semplicità, 
+  #    o potresti fare un train/test split interno)
+  df[[target_col]] <- factor(df[[target_col]])
+  
+  # Qui, per brevità, useremo TUTTI i dati come "train" e misureremo 
+  # accuracy in cross-validation => un proxy. 
+  # In un contesto più rigoroso, faresti un nested CV o un train/test separato.
+  
+  y_num <- as.numeric(df[[target_col]]) - 1
+  x_mat <- model.matrix(~ ., data=df %>% select(-all_of(target_col)))[, -1]
+  
+  cv_fit <- cv.glmnet(x_mat, y_num, family="binomial", alpha=1)
+  
+  # Usiamo l’accuracy in training come stima => non è il max della correttezza, 
+  # ma illustra la logica
+  probs <- predict(cv_fit, newx=x_mat, s="lambda.min", type="response")
+  pred  <- ifelse(probs>0.5, 1, 0)
+  acc_real <- mean(pred == y_num)
+  
+  # 2. Permutazione
+  perm_acc <- numeric(B)
+  for (b in seq_len(B)) {
+    y_perm <- sample(y_num)  # mescoliamo le etichette
+    cv_fit_perm <- cv.glmnet(x_mat, y_perm, family="binomial", alpha=1)
+    probs_perm  <- predict(cv_fit_perm, newx=x_mat, s="lambda.min", type="response")
+    pred_perm   <- ifelse(probs_perm>0.5, 1, 0)
+    perm_acc[b] <- mean(pred_perm == y_perm)
+  }
+  
+  # 3. p-value
+  p_value <- (1 + sum(perm_acc >= acc_real)) / (B+1)
+  return(list(acc_real=acc_real, p_value=p_value, perm_acc=perm_acc))
+}
+
+set.seed(123)
+test_res1 <- friedman_classifier_test(dataset_features1, "y", B=200)
+test_res2 <- friedman_classifier_test(dataset_features2, "y", B=200)
+
+cat("Feature Set 1 => Accuracy =", test_res1$acc_real, ", p-value =", test_res1$p_value, "\n")
+cat("Feature Set 2 => Accuracy =", test_res2$acc_real, ", p-value =", test_res2$p_value, "\n")
+```
+
