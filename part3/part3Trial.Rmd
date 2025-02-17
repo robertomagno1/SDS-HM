@@ -1,0 +1,490 @@
+---
+title: "HW3"
+author: "Emanuele Iaccarino"
+date: "2025-02-16"
+output: html_document
+---
+
+```{r}
+# Load dataset
+load("hw_data.RData")  # Ensure you have the correct path
+```
+
+```{r}
+library(moments)  # For skewness and kurtosis
+#install.packages("TTR")
+library(TTR)
+#install.packages("zoo")
+library(zoo) # For mooving avg
+#install.packages("signal")
+library(signal)  # For FFT
+
+load("hw_data.RData")
+
+# Identify columns for speed and altitude
+speed_cols <- paste0("sp.", 1:60)
+altitude_cols <- paste0("al.", 1:60)
+
+# Initialize dataframe with the same number of rows as hw
+df_features <- data.frame(matrix(nrow = nrow(hw), ncol = 0))
+
+# --- Speed Features ---
+df_features$Mean_Speed <- rowMeans(hw[, speed_cols], na.rm = TRUE)
+df_features$SD_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, sd(x, na.rm = TRUE)))
+df_features$Max_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, max(x, na.rm = TRUE)))
+df_features$Min_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, min(x, na.rm = TRUE)))
+df_features$Range_Speed <- df_features$Max_Speed - df_features$Min_Speed
+df_features$Median_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, median(x, na.rm = TRUE)))
+df_features$Skew_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, skewness(x, na.rm = TRUE)))
+df_features$Kurt_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, kurtosis(x, na.rm = TRUE)))
+
+# --- First-Derivative Variability (Slope Changes) ---
+df_features$FDV_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, sd(diff(x, na.rm = TRUE))))
+
+# --- Moving Average and Moving Median (Smooth Trend Features) ---
+df_features$MovAvg_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, mean(rollmean(x, k = 5, fill = NA, align = "right"), na.rm = TRUE)))
+df_features$MovMed_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, median(rollmedian(x, k = 5, fill = NA, align = "right"), na.rm = TRUE)))
+
+df_features$FFT_Entropy_Speed <- apply(hw[, speed_cols], 1, function(x) {
+  x[is.na(x)] <- 0
+  fft_vals <- abs(fft(x))
+  fft_probs <- fft_vals / sum(fft_vals)
+  return(-sum(fft_probs * log(fft_probs + 1e-10)))  # Compute entropy of frequency components
+})
+
+# --- Altitude Features ---
+df_features$Mean_Altitude <- rowMeans(hw[, altitude_cols], na.rm = TRUE)
+df_features$SD_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, sd(x, na.rm = TRUE)))
+df_features$Max_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, max(x, na.rm = TRUE)))
+df_features$Min_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, min(x, na.rm = TRUE)))
+df_features$Range_Altitude <- df_features$Max_Altitude - df_features$Min_Altitude
+df_features$Median_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, median(x, na.rm = TRUE)))
+df_features$Skew_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, skewness(x, na.rm = TRUE)))
+df_features$Kurt_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, kurtosis(x, na.rm = TRUE)))
+
+# --- First-Derivative Variability (Slope Changes) ---
+df_features$FDV_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, sd(diff(x, na.rm = TRUE))))
+
+# --- Moving Average and Moving Median for Altitude ---
+df_features$MovAvg_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, mean(rollmean(x, k = 5, fill = NA, align = "right"), na.rm = TRUE)))
+df_features$MovMed_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, median(rollmedian(x, k = 5, fill = NA, align = "right"), na.rm = TRUE)))
+
+df_features$FFT_Entropy_Altitude <- apply(hw[, altitude_cols], 1, function(x) {
+  x[is.na(x)] <- 0
+  fft_vals <- abs(fft(x))
+  fft_probs <- fft_vals / sum(fft_vals)
+  return(-sum(fft_probs * log(fft_probs + 1e-10)))  # Compute entropy of frequency components
+})
+
+# --- Assign HR Zone Labels ---
+df_features$HR_Zone <- hw$y
+
+# Verify extracted features
+head(df_features)
+#summary(df_features)
+
+
+
+```
+```{r}
+# Filter for Zone-2 and Zone-3
+df_subset <- df_features[df_features$HR_Zone %in% c("Zone-2", "Zone-3"), ]
+
+# Convert HR Zone into a binary class (0 = Zone-2, 1 = Zone-3)
+df_subset$HR_Zone <- ifelse(df_subset$HR_Zone == "Zone-2", 0, 1)
+
+# Remove HR_Zone column from features (will be used as target variable)
+df_features_clean <- df_subset[, !colnames(df_subset) %in% "HR_Zone"]
+```
+
+```{r}
+library(ggplot2)
+library(reshape2)
+library(corrplot)
+
+# Compute correlation matrix for numerical features
+cor_matrix <- cor(df_features_clean, use = "pairwise.complete.obs")
+cor_data <- melt(cor_matrix)
+
+# Plot heatmap using ggplot2
+ggplot(cor_data, aes(x=Var1, y=Var2, fill=value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  labs(title = "Feature Correlation Heatmap", x = "Features", y = "Features", fill = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+```{r}
+library(caret)
+high_corr_features <- findCorrelation(cor_matrix, cutoff = 0.9, verbose = TRUE)
+high_corr_features
+```
+```{r}
+# Compute correlation between features and HR_Zone
+cor_with_target <- cor(df_features_clean, df_subset$HR_Zone, use = "pairwise.complete.obs")
+
+# Extract absolute correlation values
+cor_with_target_abs <- abs(cor_with_target)
+
+# Rank features by correlation with HR_Zone
+cor_with_target_sorted <- sort(cor_with_target_abs, decreasing = TRUE)
+
+# Create a vector to store selected features
+selected_features <- colnames(df_features_clean)
+
+# Loop through high correlation features
+for (i in high_corr_features) {
+  feature_1 <- colnames(df_features_clean)[i]
+  
+  # Find the second feature highly correlated with it
+  correlated_pairs <- which(abs(cor_matrix[, i]) > 0.9)
+  
+  # Select the most relevant feature based on correlation with HR_Zone
+  if (length(correlated_pairs) > 1) {
+    best_feature <- names(which.max(cor_with_target_abs[correlated_pairs]))
+    selected_features <- selected_features[!selected_features %in% feature_1]
+  }
+}
+
+# Keep only the selected features
+df_selected <- df_features_clean[, selected_features]
+head(df_selected)
+print(selected_features) # feature removed
+```
+```{r}
+cor_matrix_filtered <- cor(df_selected, use = "pairwise.complete.obs")
+corrplot(cor_matrix_filtered, method = "color", type = "upper", tl.cex = 0.7, tl.col = "black", order = "hclust")
+```
+
+```{r}
+#install.packages("ROSE")
+library(ROSE)  # For oversampling
+# Compute class distribution
+df_selected$HR_Zone <- df_subset$HR_Zone
+class_counts <- table(df_selected$HR_Zone)
+class_weights <- 1 / class_counts
+
+# Assign weights to each observation
+weights_vector <- ifelse(df_selected$HR_Zone == 0, class_weights[1], class_weights[2])
+
+```
+
+```{r}
+# Count total missing values in the dataset
+sum(is.na(df_selected))
+
+# Count missing values per feature
+colSums(is.na(df_selected))
+```
+
+```{r}
+threshold <- 0.05 * nrow(df_selected)
+df_selected <- df_selected[, colSums(is.na(df_selected)) < threshold]
+sum(is.na(df_selected))
+```
+
+```{r}
+# Replace NAs with the median of each column
+for (col in colnames(df_selected)) {
+  if (sum(is.na(df_selected[[col]])) > 0) {  # If column has NAs
+    df_selected[[col]][is.na(df_selected[[col]])] <- median(df_selected[[col]], na.rm = TRUE)
+  }
+}
+# Verify that missing values are removed
+sum(is.na(df_selected))
+```
+
+
+```{r}
+set.seed(42)  # For reproducibility
+
+df_selected$HR_Zone <- df_subset$HR_Zone
+# Split data into 80% training and 20% testing
+train_index <- createDataPartition(df_selected$HR_Zone, p = 0.8, list = FALSE)
+train_data <- df_selected[train_index, ]
+test_data <- df_selected[-train_index, ]
+#sum(is.na(train_data))  
+#sum(is.na(test_data))   
+
+class_counts <- table(train_data$HR_Zone)
+class_weights <- 1 / class_counts
+weights_vector <- ifelse(train_data$HR_Zone == 0, class_weights[1], class_weights[2])
+
+# Train Logistic Regression Model
+model <- glm(HR_Zone ~ ., data = train_data, family = binomial(), weights = weights_vector)
+
+# Predict on Test Set
+pred_probs <- predict(model, test_data, type = "response")  # Store `pred_probs`
+pred_labels <- ifelse(pred_probs > 0.5, 1, 0)
+
+# Compute Confusion Matrix
+library(caret)
+conf_matrix <- confusionMatrix(as.factor(pred_labels), as.factor(test_data$HR_Zone))
+print(conf_matrix)
+
+```
+
+Avvertimento: glm.fit: si sono verificate probabilità stimate numericamente pari a 0 o 1
+
+
+```{r}
+# Lower decision threshold to improve sensitivity
+pred_labels_adj <- ifelse(pred_probs > 0.4, 1, 0)
+
+# Compute new confusion matrix
+conf_matrix_adj <- confusionMatrix(as.factor(pred_labels_adj), as.factor(test_data$HR_Zone))
+print(conf_matrix_adj)
+
+```
+
+```{r}
+# Compute KS Test on the true (non-permuted) model
+ks_stat <- ks.test(pred_probs[test_data$HR_Zone == 0], 
+                   pred_probs[test_data$HR_Zone == 1])$statistic
+set.seed(42)  # Ensure reproducibility
+
+P <- 100  # Number of permutations
+perm_values <- numeric(P)
+
+# Store original HR_Zone labels before permutation
+original_labels <- test_data$HR_Zone
+
+for (p in 1:P) {
+  # Create a shuffled copy of the dataset
+  permuted_data <- test_data
+  permuted_data$HR_Zone <- sample(original_labels)  # Shuffle labels
+
+  # Retrain classifier on permuted labels
+  perm_model <- glm(HR_Zone ~ ., data = permuted_data, family = binomial())
+
+  # Compute test statistic on permuted labels
+  perm_preds <- predict(perm_model, type = "response")
+  perm_values[p] <- ks.test(perm_preds[permuted_data$HR_Zone == 0], 
+                            perm_preds[permuted_data$HR_Zone == 1])$statistic
+}
+
+# Reset HR_Zone to its original state
+test_data$HR_Zone <- original_labels
+power_value <- mean(perm_values >= ks_stat)
+
+cat("Estimated Power for Zone-2 vs Zone-3:", power_value, "\n")
+
+```
+```{r}
+library(ggplot2)
+
+# Convert permutation results into a dataframe for visualization
+perm_df <- data.frame(perm_values)
+
+# Plot Histogram
+ggplot(perm_df, aes(x = perm_values)) +
+  geom_histogram(binwidth = 0.02, fill = "blue", alpha = 0.6) +
+  geom_vline(xintercept = ks_stat, color = "red", linetype = "dashed", size = 1) +
+  labs(title = "Permutation Test: KS Statistic Distribution",
+       x = "KS Statistic (Permuted Data)",
+       y = "Frequency") +
+  theme_minimal()
+
+```
+
+
+
+
+```{r}
+P <- 100  # Number of permutations
+perm_values <- numeric(P)
+
+for (p in 1:P) {
+  # Shuffle class labels randomly
+  perm_labels <- sample(df_selected$HR_Zone)
+  df_selected$HR_Zone <- factor(perm_labels)
+  
+  # Retrain classifier on shuffled data
+  perm_model <- glm(HR_Zone ~ ., data = df_selected, family = binomial())
+
+  # Compute test statistic on permuted labels
+  perm_preds <- predict(perm_model, df_selected, type = "response")
+  perm_values[p] <- ks.test(perm_preds[perm_labels == 0], 
+                            perm_preds[perm_labels == 1])$statistic
+}
+
+# Compute Power: Proportion of times observed test statistic exceeds null distribution
+ks_stat <- ks.test(pred_probs[df_selected$HR_Zone == 0], pred_probs[df_selected$HR_Zone == 1])$statistic
+power_value <- mean(quantile(perm_values, 0.95) <= ks_stat)
+
+cat("Estimated Power for Zone-2 vs Zone-3:", power_value, "\n")
+
+```
+```{r}
+library(nnet)
+
+# Filter for all three HR Zones
+df_multiclass <- df_features[df_features$HR_Zone %in% c("Zone-2", "Zone-3", "Zone-4"), ]
+df_multiclass$HR_Zone <- factor(df_multiclass$HR_Zone, levels = c("Zone-2", "Zone-3", "Zone-4"))
+
+# Train a Multi-Class Classifier using `df_selected`
+model_multi <- multinom(HR_Zone ~ ., data = df_selected)
+
+# Predict class probabilities
+pred_probs <- predict(model_multi, df_selected, type = "probs")
+
+# Compute KS test statistics for multi-class comparison
+ks_23 <- ks.test(pred_probs[df_selected$HR_Zone == "Zone-2", 2], 
+                 pred_probs[df_selected$HR_Zone == "Zone-3", 2])$statistic
+ks_34 <- ks.test(pred_probs[df_selected$HR_Zone == "Zone-3", 3], 
+                 pred_probs[df_selected$HR_Zone == "Zone-4", 3])$statistic
+ks_24 <- ks.test(pred_probs[df_selected$HR_Zone == "Zone-2", 3], 
+                 pred_probs[df_selected$HR_Zone == "Zone-4", 3])$statistic
+
+cat("KS Statistic Zone-2 vs Zone-3:", ks_23, "\n")
+cat("KS Statistic Zone-3 vs Zone-4:", ks_34, "\n")
+cat("KS Statistic Zone-2 vs Zone-4:", ks_24, "\n")
+
+```
+
+```{r}
+library(MASS)   # Logistic Regression
+library(caret)  # Model training
+#library(pROC)   # Model evaluation
+
+# Train Logistic Regression Classifier
+model <- glm(HR_Zone ~ ., data = df_subset, family = binomial())
+
+# Predict class probabilities
+real_preds <- predict(model, df_subset, type = "response")
+
+# Compute KS Test Statistic
+ks_stat <- ks.test(real_preds[df_subset$HR_Zone == 0], 
+                   real_preds[df_subset$HR_Zone == 1])$statistic
+
+```
+
+```{r}
+P <- 100  # Number of permutations
+perm_values <- numeric(P)
+
+for (p in 1:P) {
+  # Shuffle class labels randomly
+  perm_labels <- sample(df_subset$HR_Zone)
+  df_subset$HR_Zone <- factor(perm_labels)
+  
+  # Retrain classifier on shuffled data
+  perm_model <- glm(HR_Zone ~ ., data = df_subset, family = binomial())
+
+  # Compute test statistic on permuted labels
+  perm_preds <- predict(perm_model, df_subset, type = "response")
+  perm_values[p] <- ks.test(perm_preds[perm_labels == 0], 
+                            perm_preds[perm_labels == 1])$statistic
+}
+
+# Compute Power: Proportion of times observed test statistic exceeds null distribution
+power_value <- mean(quantile(perm_values, 0.95) <= ks_stat)
+
+cat("Estimated Power for Zone-2 vs Zone-3:", power_value, "\n")
+
+```
+
+```{r}
+library(nnet)
+
+# Filter for all three HR Zones
+df_multiclass <- df_features[df_features$HR_Zone %in% c("Zone-2", "Zone-3", "Zone-4"), ]
+df_multiclass$HR_Zone <- factor(df_multiclass$HR_Zone, levels = c("Zone-2", "Zone-3", "Zone-4"))
+
+# Train a Multi-Class Classifier
+model_multi <- multinom(HR_Zone ~ ., data = df_multiclass)
+
+# Predict class probabilities
+pred_probs <- predict(model_multi, df_multiclass, type = "probs")
+
+# Compute KS test statistics for multi-class comparison
+ks_23 <- ks.test(pred_probs[df_multiclass$HR_Zone == "Zone-2", 2], 
+                 pred_probs[df_multiclass$HR_Zone == "Zone-3", 2])$statistic
+ks_34 <- ks.test(pred_probs[df_multiclass$HR_Zone == "Zone-3", 3], 
+                 pred_probs[df_multiclass$HR_Zone == "Zone-4", 3])$statistic
+ks_24 <- ks.test(pred_probs[df_multiclass$HR_Zone == "Zone-2", 3], 
+                 pred_probs[df_multiclass$HR_Zone == "Zone-4", 3])$statistic
+
+cat("KS Statistic Zone-2 vs Zone-3:", ks_23, "\n")
+cat("KS Statistic Zone-3 vs Zone-4:", ks_34, "\n")
+cat("KS Statistic Zone-2 vs Zone-4:", ks_24, "\n")
+
+```
+
+```{r}
+library(xgboost)
+
+# Prepare Data for XGBoost
+train_matrix <- as.matrix(train_data[, -ncol(train_data)])  # Remove HR_Zone column
+train_labels <- train_data$HR_Zone
+
+test_matrix <- as.matrix(test_data[, -ncol(test_data)])  # Remove HR_Zone column
+test_labels <- test_data$HR_Zone
+
+# Convert data to XGBoost format
+dtrain <- xgb.DMatrix(data = train_matrix, label = train_labels)
+dtest <- xgb.DMatrix(data = test_matrix, label = test_labels)
+
+# Define XGBoost Parameters
+params <- list(
+  objective = "binary:logistic",  # Binary classification
+  eval_metric = "logloss",  # Log loss metric
+  max_depth = 6,  # Depth of trees
+  eta = 0.1,  # Learning rate
+  nrounds = 200  # Number of boosting rounds
+)
+
+# Train XGBoost Model
+xgb_model <- xgb.train(params = params, data = dtrain, nrounds = 200, watchlist = list(train = dtrain, test = dtest))
+
+# Predict on Test Set
+xgb_pred_probs <- predict(xgb_model, dtest)
+xgb_pred_labels <- ifelse(xgb_pred_probs > 0.4, 1, 0)  # Use best threshold
+
+# Compute Confusion Matrix
+conf_matrix_xgb <- confusionMatrix(as.factor(xgb_pred_labels), as.factor(test_labels))
+print(conf_matrix_xgb)
+```
+```{r}
+P <- 100  # Number of permutations
+perm_values <- numeric(P)
+
+for (p in 1:P) {
+  # Shuffle labels
+  permuted_data <- test_data
+  permuted_data$HR_Zone <- sample(test_data$HR_Zone)
+
+  # Train the best model on permuted labels
+  perm_model <- xgb.train(params = params, data = dtest, nrounds = 200)
+  
+  # Compute test statistic on permuted labels
+  perm_preds <- predict(perm_model, dtest)
+  perm_values[p] <- ks.test(perm_preds[permuted_data$HR_Zone == 0], 
+                            perm_preds[permuted_data$HR_Zone == 1])$statistic
+}
+
+# Compute Power
+ks_stat <- ks.test(xgb_pred_probs[test_labels == 0], xgb_pred_probs[test_labels == 1])$statistic
+power_value <- mean(perm_values >= ks_stat)
+
+cat("Estimated Power for XGBoost Model:", power_value, "\n")
+
+```
+
+```{r}
+library(ggplot2)
+
+# Convert permutation results into a dataframe for visualization
+perm_df <- data.frame(perm_values)
+
+# Plot Histogram
+ggplot(perm_df, aes(x = perm_values)) +
+  geom_histogram(binwidth = 0.02, fill = "blue", alpha = 0.6) +
+  geom_vline(xintercept = ks_stat, color = "red", linetype = "dashed", size = 1) +
+  labs(title = "Permutation Test: KS Statistic Distribution",
+       x = "KS Statistic (Permuted Data)",
+       y = "Frequency") +
+  theme_minimal()
+```
+
