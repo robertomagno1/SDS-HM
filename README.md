@@ -41,7 +41,7 @@ Ensure you have the following installed:
 ### **Running the Analysis**
 1. Clone this repository:
    ```sh
-   git clone https://github.com/yourusername/hw2-3-two-sample-testing.git
+   git clone https://github.com/robertomagno1/SDS-HM.git
    cd hw2-3-two-sample-testing
    ```
 2. Open `hw2_3_analysis.Rmd` in **RStudio**.
