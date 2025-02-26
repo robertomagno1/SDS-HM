@@ -1,0 +1,625 @@
+---
+title: "HW3"
+author: "Emanuele Iaccarino"
+date: "2025-02-16"
+output: html_document
+---
+
+```{r}
+load("hw_data.RData")  
+# Question: In bachelor degree we used to import dataset from environment section, the Import Dataset is easy to use but in this case it bugs, like among all the encoder no one works and it shows only messy simbols and characters, I was curious about why this method works and the other doesn't
+speed_cols <- paste0("sp.", 1:60)
+altitude_cols <- paste0("al.", 1:60)
+```
+
+```{r}
+library(moments)  # For skewness and kurtosis
+#install.packages("TTR")
+library(TTR)
+#install.packages("zoo")
+library(zoo) # For mooving avg
+#install.packages("signal")
+library(signal)  # For FFT
+
+df_features <- data.frame(matrix(nrow = nrow(hw), ncol = 0)) # initialization to match hw
+
+# Workflow: In our group we have all done a few exams of economis/econometric so we have experience into working with time series: Choosing the right variables is 90% of the problem almost so we putted a lot of effort on this part
+# I used to work with Gretl(econometric software) so I used all the trick implemented there to get more info as possible from time series data, maximizing the information we have and reducing the diemesion of the dataset
+
+# --- Speed Features ---
+# mean speed
+df_features$Mean_Speed <- rowMeans(hw[, speed_cols], na.rm = TRUE)
+# sd speed
+df_features$SD_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, sd(x, na.rm = TRUE)))
+# max speed
+df_features$Max_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, max(x, na.rm = TRUE)))
+# min speed
+df_features$Min_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, min(x, na.rm = TRUE)))
+# range speed
+df_features$Range_Speed <- df_features$Max_Speed - df_features$Min_Speed
+# median speed
+df_features$Median_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, median(x, na.rm = TRUE)))
+# skewness of the speeed
+df_features$Skew_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, skewness(x, na.rm = TRUE)))
+# kurtosis of the speed
+df_features$Kurt_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, kurtosis(x, na.rm = TRUE)))
+
+# --- Speed Features advanced feature extraction ---
+
+# Slope change (It should represent an accelleration)
+df_features$FDV_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, sd(diff(x, na.rm = TRUE))))
+
+# --- Smooth Trend Features to take into consideration a bigger windows of data, using the neighbourhood observation to extend instant data acquisition to a certain time interval
+# Moving Average and Moving Median
+df_features$MovAvg_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, mean(rollmean(x, k = 5, fill = NA, align = "right"), na.rm = TRUE)))
+# Moving Median
+df_features$MovMed_Speed <- apply(hw[, speed_cols], 1, function(x) ifelse(all(is.na(x)), NA, median(rollmedian(x, k = 5, fill = NA, align = "right"), na.rm = TRUE)))
+
+# Entropy of frequency components
+# https://www.mathworks.com/help/signal/ref/spectralentropy.html
+# converts  time-series signal from the time domain to the frequency domain. Instead of looking at how speed changes over time, we analyze which frequencies dominate the signal
+# Low entropy: Fewer frequency components contribute to speed variation.
+# High entropy: A more complex and unpredictable pattern of speed changes.
+
+df_features$FFT_Entropy_Speed <- apply(hw[, speed_cols], 1, function(x) {
+  x[is.na(x)] <- 0
+  fft_vals <- abs(fft(x))
+  fft_probs <- fft_vals / sum(fft_vals)
+  return(-sum(fft_probs * log(fft_probs + 1e-10)))  
+})
+
+# Absolute Speed 
+df_features$RMS_Speed <- apply(hw[, speed_cols], 1, function(x) {
+  sqrt(mean(x^2, na.rm = TRUE))
+})
+
+# --- Altitude Features ---
+# mean altitude
+df_features$Mean_Altitude <- rowMeans(hw[, altitude_cols], na.rm = TRUE)
+# sd altitude
+df_features$SD_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, sd(x, na.rm = TRUE)))
+# max altitude
+df_features$Max_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, max(x, na.rm = TRUE)))
+# min altitude
+df_features$Min_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, min(x, na.rm = TRUE)))
+# range altitude
+df_features$Range_Altitude <- df_features$Max_Altitude - df_features$Min_Altitude
+# median altitude
+df_features$Median_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, median(x, na.rm = TRUE)))
+# Skweness of the altitude
+df_features$Skew_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, skewness(x, na.rm = TRUE)))
+# Kurtosis of the altitude
+df_features$Kurt_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, kurtosis(x, na.rm = TRUE)))
+
+# --- Altitude Features advanced feature extraction ---
+
+# Slope Changes (We can interpretate it as elevation difference)
+df_features$FDV_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, sd(diff(x, na.rm = TRUE))))
+
+# Moving Average
+df_features$MovAvg_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, mean(rollmean(x, k = 5, fill = NA, align = "right"), na.rm = TRUE)))
+# Moving Median
+df_features$MovMed_Altitude <- apply(hw[, altitude_cols], 1, function(x) ifelse(all(is.na(x)), NA, median(rollmedian(x, k = 5, fill = NA, align = "right"), na.rm = TRUE)))
+# Entropy of frequency components
+df_features$FFT_Entropy_Altitude <- apply(hw[, altitude_cols], 1, function(x) {
+  x[is.na(x)] <- 0
+  fft_vals <- abs(fft(x))
+  fft_probs <- fft_vals / sum(fft_vals)
+  return(-sum(fft_probs * log(fft_probs + 1e-10))) 
+})
+# Here the results are slightly different from the speed
+# If altitude fluctuates significantly (Not flat), FFT entropy may help detect patterns.
+# If altitude is mostly flat (track running), then FFT entropy might not be useful.
+
+# Absolute Altitude (Root Mean Square of Altitude)
+df_features$RMS_Altitude <- apply(hw[, altitude_cols], 1, function(x) {
+  sqrt(mean(x^2, na.rm = TRUE))
+})
+
+df_features$HR_Zone <- hw$y
+head(df_features)
+#summary(df_features)
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(df_features, aes(x = as.factor(HR_Zone), fill = as.factor(HR_Zone))) +
+  geom_bar() +
+  labs(title = "HR Zone Distribution",
+       x = "HR Zone",
+       y = "Count",
+       fill = "HR Zone") +
+  theme_minimal()
+
+```
+```{r}
+library(reshape2)
+
+df_melted <- melt(df_features, id.vars = "HR_Zone")
+
+ggplot(df_melted, aes(x = value, fill = as.factor(HR_Zone))) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~variable, scales = "free") +
+  labs(title = "Feature Distributions by HR Zone",
+       x = "Value",
+       y = "Density") +
+  theme_minimal()
+```
+We can see how just a few of the features we created are able to clearly separated the different zones, some of them can be also removed to make our model more simple but we'll deal with that later
+
+ALso we learned that the Zones are in order, speed variables are the one who will weight more in the model, while "ad occhio, sorry for italian" the only altitude variable that seams to matter a little is entropy
+
+```{r}
+# Count total missing values in the dataset
+sum(is.na(df_features))
+
+# Count missing values per feature
+colSums(is.na(df_features))
+```
+WHY? Well Skewness/Kurtosis/FFT fail when all values are the same so variance is 0
+
+I hate imputing data, mostly on time series, since we have a good number of obs and a few Nan's let's try to directly remove the row if we have more than 2 Nan's on the same row
+```{r}
+threshold <- 0.05 * nrow(df_features)
+df_features <- df_features[, colSums(is.na(df_features)) < threshold]
+sum(is.na(df_features))
+```
+Never luck :(
+We impute with median to deal with outliers, it's the easier and less expensive computationally speaking way to deal with this problem
+
+```{r}
+for (col in colnames(df_features)) {
+  if (sum(is.na(df_features[[col]])) > 0) {  # If column has NAs
+    df_features[[col]][is.na(df_features[[col]])] <- median(df_features[[col]], na.rm = TRUE)
+  }
+}
+sum(is.na(df_features))
+```
+This is my favourite classification trick, learned by nerding on Kaggle Playground competition a few years ago. PCA shows intuitively how easily the dataset is separable, we can more or less guess how much accuracy we can expect from our model
+```{r}
+pca_data <- df_features[, !names(df_features) %in% "HR_Zone"]
+pca_result <- prcomp(pca_data, scale. = TRUE) # FactorMineR was giving me problem
+pca_df <- data.frame(pca_result$x[, 1:2], HR_Zone = df_features$HR_Zone)
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = HR_Zone)) +
+  geom_point(alpha = 0.6) +
+  labs(title = "PCA Projection", x = "Principal Component 1", y = "Principal Component 2") +
+  theme_minimal()
+
+```
+I hoped in better results, anyway let's get more info:
+```{r}
+library(ggplot2)
+
+explained_variance <- (pca_result$sdev^2) / sum(pca_result$sdev^2)
+cumulative_variance <- cumsum(explained_variance)
+
+var_df <- data.frame(
+  PC = 1:length(explained_variance),
+  Variance_Explained = explained_variance, # variance explained by each PC
+  Cumulative_Variance = cumulative_variance # how many PCs retain most of the info
+)
+
+# Plots
+ggplot(var_df, aes(x = PC, y = Variance_Explained)) +
+  geom_col(fill = "skyblue") +
+  labs(title = "Variance Explained by Principal Components",
+       x = "Principal Component",
+       y = "Proportion of Variance Explained") +
+  theme_minimal()
+
+ggplot(var_df, aes(x = PC, y = Cumulative_Variance)) +
+  geom_line(color = "blue") + geom_point(size = 2, color = "red") +
+  labs(title = "Cumulative Variance Explained",
+       x = "Number of Principal Components",
+       y = "Cumulative Proportion of Variance") +
+  theme_minimal()
+
+```
+
+Initially we went straight to modeling and find out there is high correlation between the features we created (it's quite normal), so let's get deeper information and deal with it
+
+```{r}
+# Convert HR_Zone to numeric values
+df_features$HR_Zone <- ifelse(df_features$HR_Zone == "Zone-2", 0, 
+                       ifelse(df_features$HR_Zone == "Zone-3", 1, 2))
+
+df_features_clean <- df_features[, !colnames(df_features) %in% "HR_Zone"] # remove target
+```
+
+```{r}
+library(ggplot2)
+library(reshape2)
+library(corrplot)
+cor_matrix <- cor(df_features_clean, use = "pairwise.complete.obs")
+cor_data <- melt(cor_matrix)
+
+ggplot(cor_data, aes(x=Var1, y=Var2, fill=value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  labs(title = "Feature Correlation Heatmap", x = "Features", y = "Features", fill = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+We can see some high correlations, so usually we just delete the features with more than 90% of correlation, but this approach delete the second variable analyze, so "per non lasciare nulla al caso" (idk if this make sense in english) we keep the one with more relationship to the target variable (I know that higher relationship doesn't mean higher predictive ability, but in the past years this always worked good for me)
+```{r}
+library(caret)
+high_corr_features <- findCorrelation(cor_matrix, cutoff = 0.9, verbose = TRUE)
+high_corr_features
+```
+```{r}
+cor_with_target <- cor(df_features_clean, df_features$HR_Zone, use = "pairwise.complete.obs") # corr with target
+
+cor_with_target_abs <- abs(cor_with_target) # to deal equally with - and + corr
+cor_with_target_sorted <- sort(cor_with_target_abs, decreasing = TRUE)
+selected_features <- colnames(df_features_clean)
+
+for (i in high_corr_features) {
+  feature_1 <- colnames(df_features_clean)[i]
+    correlated_pairs <- which(abs(cor_matrix[, i]) > 0.9)
+    if (length(correlated_pairs) > 1) {
+    best_feature <- names(which.max(cor_with_target_abs[correlated_pairs]))
+    selected_features <- selected_features[!selected_features %in% feature_1]
+  }
+}
+
+# Keep only the selected features
+df_selected <- df_features_clean[, selected_features]
+
+head(df_selected)
+print(selected_features) # feature removed
+```
+```{r}
+cor_matrix_filtered <- cor(df_selected, use = "pairwise.complete.obs")
+corrplot(cor_matrix_filtered, method = "color", type = "upper", tl.cex = 0.7, tl.col = "black", order = "hclust")
+```
+```{r}
+pca_data <- df_selected[, !names(df_selected) %in% "HR_Zone"]
+pca_result <- prcomp(pca_data, scale. = TRUE) 
+pca_df <- data.frame(pca_result$x[, 1:2], HR_Zone = df_features$HR_Zone)
+
+pca_df$HR_Zone <- factor(pca_df$HR_Zone, levels = c(0, 1, 2), 
+                          labels = c("Zone-2", "Zone-3", "Zone-4"))
+hr_zone_colors <- c("Zone-2" = "red", "Zone-3" = "blue", "Zone-4" = "green")
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = HR_Zone)) +
+  geom_point(alpha = 0.6) +
+  scale_color_manual(values = hr_zone_colors) + 
+  labs(title = "PCA Projection of HR Zones", 
+       x = "Principal Component 1", 
+       y = "Principal Component 2", 
+       color = "HR Zone") +
+  theme_minimal()
+
+```
+Slightly better to be honest, we can see that each zone density is more or less compact
+
+
+We will perform the test for Zone-2 vs Zone-3 first.
+```{r}
+# Filter 
+df_subset <- df_selected[df_features$HR_Zone %in% c(0, 1), ]
+
+# Add HR_Zone column explicitly from df_selected
+df_subset$HR_Zone <- df_features$HR_Zone[df_features$HR_Zone %in% c(0, 1)]
+
+# Convert HR_Zone into a factor with meaningful labels
+df_subset$HR_Zone <- factor(df_subset$HR_Zone, levels = c(0, 1), labels = c("Zone-2", "Zone-3"))
+
+# Check if HR_Zone is correctly included
+table(df_subset$HR_Zone)
+```
+
+```{r}
+pca_data <- df_subset[, !names(df_subset) %in% "HR_Zone"]
+pca_result <- prcomp(pca_data, scale. = TRUE) 
+pca_df <- data.frame(pca_result$x[, 1:2], HR_Zone = df_features$HR_Zone[df_features$HR_Zone %in% c(0, 1)])
+
+pca_df$HR_Zone <- factor(pca_df$HR_Zone, levels = c(0, 1), 
+                          labels = c("Zone-2", "Zone-3"))
+hr_zone_colors <- c("Zone-2" = "red", "Zone-3" = "blue")
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = HR_Zone)) +
+  geom_point(alpha = 0.6) +
+  scale_color_manual(values = hr_zone_colors) + 
+  labs(title = "PCA Projection of HR Zones", 
+       x = "Principal Component 1", 
+       y = "Principal Component 2", 
+       color = "HR Zone") +
+  theme_minimal()
+```
+
+
+```{r}
+set.seed(42)  # For reproducibility
+df_subset$HR_Zone <- ifelse(df_subset$HR_Zone == "Zone-2", 0, 1)
+# Split data into 80% training and 20% testing
+train_index <- createDataPartition(df_subset$HR_Zone, p = 0.8, list = FALSE)
+train_data <- df_subset[train_index, ]
+test_data <- df_subset[-train_index, ]
+#sum(is.na(train_data))  
+#sum(is.na(test_data))   
+
+class_counts <- table(train_data$HR_Zone)
+class_weights <- 1 / class_counts
+weights_vector <- ifelse(train_data$HR_Zone == 0, class_weights[1], class_weights[2])
+
+# Train Logistic Regression Model
+model <- glm(HR_Zone ~ ., data = train_data, family = binomial(), weights = weights_vector)
+
+# Predict on Test Set
+pred_probs <- predict(model, test_data, type = "response")  # Store `pred_probs`
+pred_labels <- ifelse(pred_probs > 0.5, 1, 0)
+
+# Compute Confusion Matrix
+library(caret)
+conf_matrix <- confusionMatrix(as.factor(pred_labels), as.factor(test_data$HR_Zone))
+print(conf_matrix)
+
+```
+```{r}
+# Lower decision threshold to improve sensitivity
+pred_labels_adj <- ifelse(pred_probs > 0.4, 1, 0)
+
+conf_matrix_adj <- confusionMatrix(as.factor(pred_labels_adj), as.factor(test_data$HR_Zone))
+print(conf_matrix_adj)
+```
+We get slighly better results
+```{r}
+# Train Logistic Regression Model on Zone-2 vs Zone-3
+model <- glm(HR_Zone ~ ., data = df_subset, family = binomial())
+
+# Extract feature importance as absolute coefficients
+feature_importance <- abs(coef(model)[-1])  # Remove intercept
+importance_df <- data.frame(Feature = names(feature_importance), Importance = feature_importance)
+
+# Sort features by importance
+importance_df <- importance_df[order(-importance_df$Importance), ]
+
+# Print top 10 most important features
+print(head(importance_df, 10))
+
+# Plot feature importance
+library(ggplot2)
+ggplot(importance_df[1:10, ], aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  coord_flip() +
+  labs(title = "Feature Importance (Logistic Regression)", x = "Feature", y = "Absolute Coefficient") +
+  theme_minimal()
+```
+Most important features, strange to see max and min cause they don't hold a lot of information but probably the range of values is important to determine the zone
+
+```{r}
+ks_stat <- ks.test(pred_probs[which(test_data$HR_Zone == 0)], 
+                   pred_probs[which(test_data$HR_Zone == 1)])$statistic
+
+P <- 100 
+perm_values <- numeric(P)
+
+original_labels <- test_data$HR_Zone
+
+for (p in 1:P) {
+  permuted_data <- test_data
+  permuted_data$HR_Zone <- sample(original_labels)  # Shuffle labels
+  # Train model with error handling
+  perm_model <- glm(HR_Zone ~ ., data = permuted_data, family = binomial())
+
+
+
+  # Compute test statistic on permuted labels
+  perm_preds <- predict(perm_model, type = "response")
+  
+  perm_values[p] <- ks.test(perm_preds[which(permuted_data$HR_Zone == 0)], 
+                            perm_preds[which(permuted_data$HR_Zone == 1)])$p.value
+}
+
+test_data$HR_Zone <- original_labels
+alpha = 0.05
+quantile_threshold <- quantile(perm_values, 1 - alpha)
+power <- mean(ks_stat >= quantile_threshold)
+
+cat("Observed KS Statistic:", ks_stat, "\n")
+cat("Mean KS Statistic from Permutation:", mean(perm_values), "\n")
+cat("1 - Alpha Quantile (95% Permuted KS):", quantile_threshold, "\n")
+cat("Estimated Power:", power, "\n")
+
+```
+
+```{r}
+library(ggplot2)
+
+# Convert permutation results into a dataframe for visualization
+perm_df <- data.frame(perm_values)
+
+# Plot Histogram
+ggplot(perm_df, aes(x = perm_values)) +
+  geom_histogram(binwidth = 0.02, fill = "blue", alpha = 0.6) +
+  geom_vline(xintercept = ks_stat, color = "red", linetype = "dashed", size = 1.5) +
+  labs(title = "Permutation Test: KS Statistic Distribution",
+       x = "KS Statistic (Permuted Data)",
+       y = "Frequency") +
+  theme_minimal()
+
+```
+
+```{r}
+hist(perm_values, breaks = 20, main = "Distribution of Permuted KS Statistics", col = "skyblue")
+```
+Honestly I'd have expected a lower value, power = 1 I think is wrong but I checked more than 10 times the implementation of Friedman's paper and it seams correct :(
+
+Anyway we give a try to the last part:
+
+Since now we are dealing with 3 classes simoultaneously we use Multinomial Logistic Regression, that estimates probabilities for all classes. So now we have multiple logistic functions (one per class) and ofc ultiple decision boundaries (multi-class)
+
+
+```{r}
+library(nnet)
+
+df_multiclass <- df_features[df_features$HR_Zone %in% c(0,1,2), ]
+df_multiclass$HR_Zone <- factor(df_multiclass$HR_Zone, levels = c(0,1,2))
+
+model_multi <- multinom(HR_Zone ~ ., data = df_multiclass)
+
+pred_probs <- predict(model_multi, df_multiclass, type = "probs")
+
+ks_23 <- ks.test(pred_probs[df_multiclass$HR_Zone == 0, 2], 
+                 pred_probs[df_multiclass$HR_Zone == 1, 2])$statistic
+ks_34 <- ks.test(pred_probs[df_multiclass$HR_Zone == 1, 3], 
+                 pred_probs[df_multiclass$HR_Zone == 2, 3])$statistic
+ks_24 <- ks.test(pred_probs[df_multiclass$HR_Zone == 0, 3], 
+                 pred_probs[df_multiclass$HR_Zone == 2, 3])$statistic
+
+cat("KS Statistic Zone-2 vs Zone-3:", ks_23, "\n")
+cat("KS Statistic Zone-3 vs Zone-4:", ks_34, "\n")
+cat("KS Statistic Zone-2 vs Zone-4:", ks_24, "\n")
+
+```
+Well we have a weaker separation, a stronger separation and a very strong separation, this value makes totally sense seeing the distribution of our main variables. Those depends by how much the two distribution overlap and ofc Zone 2 and Zone 4 being more distanced have a larger value
+
+We can now apply the Friedman's test for the 3 case scenario as well
+
+```{r}
+set.seed(42)
+
+P <- 100 
+perm_values_23 <- numeric(P)
+perm_values_34 <- numeric(P)
+perm_values_24 <- numeric(P)
+
+original_labels <- df_multiclass$HR_Zone
+
+for (p in 1:P) {
+  permuted_data <- df_multiclass
+  permuted_data$HR_Zone <- sample(original_labels)
+  
+  perm_model_multi <- tryCatch({
+    multinom(HR_Zone ~ ., data = permuted_data)
+  }, error = function(e) return(NULL))  # Handle errors 
+  
+  if (is.null(perm_model_multi)) next # skip if fail
+  
+  perm_preds <- predict(perm_model_multi, permuted_data, type = "probs")
+  
+  perm_values_23[p] <- ks.test(perm_preds[permuted_data$HR_Zone == 0, 2], 
+                               perm_preds[permuted_data$HR_Zone == 1, 2])$statistic
+  perm_values_34[p] <- ks.test(perm_preds[permuted_data$HR_Zone == 1, 3], 
+                               perm_preds[permuted_data$HR_Zone == 2, 3])$statistic
+  perm_values_24[p] <- ks.test(perm_preds[permuted_data$HR_Zone == 0, 3], 
+                               perm_preds[permuted_data$HR_Zone == 2, 3])$statistic
+}
+
+df_multiclass$HR_Zone <- original_labels
+alpha = 0.05
+quantile_threshold_23 <- quantile(perm_values_23, 1 - alpha)
+quantile_threshold_34 <- quantile(perm_values_34, 1 - alpha)
+quantile_threshold_24 <- quantile(perm_values_24, 1 - alpha)
+
+power <- mean(ks_stat >= quantile_threshold)
+
+power_23 <- mean(ks_23 >= quantile_threshold_23)
+power_34 <- mean(ks_34 >= quantile_threshold_34)
+power_24 <- mean(ks_24 >= quantile_threshold_24)
+
+cat("Estimated Power Zone-2 vs Zone-3:", power_23, "\n")
+cat("Estimated Power Zone-3 vs Zone-4:", power_34, "\n")
+cat("Estimated Power Zone-2 vs Zone-4:", power_24, "\n")
+
+```
+Power all equal to 1 :(
+I would expected only Zone 2 vs Zone 3 to get closer to it, we can confirm something is wrong :(((
+```{r}
+perm_df_23 <- data.frame(perm_values_23)
+
+ggplot(perm_df_23, aes(x = perm_values_23)) +
+  geom_histogram(binwidth = 0.02, fill = "blue", alpha = 0.6) +
+  geom_vline(xintercept = ks_23, color = "red", linetype = "dashed", size = 1.5) +
+  labs(title = "Permutation Test: KS Statistic Distribution",
+       x = "KS Statistic (Permuted Data)",
+       y = "Frequency") +
+  theme_minimal()
+```
+
+```{r}
+perm_df_34 <- data.frame(perm_values_34)
+
+ggplot(perm_df_34, aes(x = perm_values_34)) +
+  geom_histogram(binwidth = 0.02, fill = "blue", alpha = 0.6) +
+  geom_vline(xintercept = ks_23, color = "red", linetype = "dashed", size = 1.5) +
+  labs(title = "Permutation Test: KS Statistic Distribution",
+       x = "KS Statistic (Permuted Data)",
+       y = "Frequency") +
+  theme_minimal()
+```
+```{r}
+perm_df_24 <- data.frame(perm_values_24)
+
+ggplot(perm_df_24, aes(x = perm_values_24)) +
+  geom_histogram(binwidth = 0.02, fill = "blue", alpha = 0.6) +
+  geom_vline(xintercept = ks_23, color = "red", linetype = "dashed", size = 1.5) +
+  labs(title = "Permutation Test: KS Statistic Distribution",
+       x = "KS Statistic (Permuted Data)",
+       y = "Frequency") +
+  theme_minimal()
+```
+Those plots are so bad to see :(
+
+Let's try additional tests, coming from the easier solution we applied on HW2
+
+```{r}
+ks_23 <- ks.test(pred_probs[df_multiclass$HR_Zone == 0, 2], 
+                 pred_probs[df_multiclass$HR_Zone == 1, 2])
+
+ks_34 <- ks.test(pred_probs[df_multiclass$HR_Zone == 1, 3], 
+                 pred_probs[df_multiclass$HR_Zone == 2, 3])
+
+ks_24 <- ks.test(pred_probs[df_multiclass$HR_Zone == 0, 3], 
+                 pred_probs[df_multiclass$HR_Zone == 2, 3])
+
+alpha <- 0.05  
+m <- 3  
+alpha_corrected <- alpha / m
+
+cat("KS Statistic Zone-2 vs Zone-3:", ks_23$statistic, "p-value:", ks_23$p.value, "\n")
+cat("KS Statistic Zone-3 vs Zone-4:", ks_34$statistic, "p-value:", ks_34$p.value, "\n")
+cat("KS Statistic Zone-2 vs Zone-4:", ks_24$statistic, "p-value:", ks_24$p.value, "\n")
+
+cat("\nSignificance after Bonferroni Correction (α =", alpha_corrected, ")\n")
+cat("Reject H0 (Z2 vs Z3)?:", ks_23$p.value < alpha_corrected, "\n")
+cat("Reject H0 (Z3 vs Z4)?:", ks_34$p.value < alpha_corrected, "\n")
+cat("Reject H0 (Z2 vs Z4)?:", ks_24$p.value < alpha_corrected, "\n")
+
+```
+Bonferroni-corrected KS tests confirm that all HR Zones are distinct from each other.
+
+```{r}
+library(car)  # ANOVA 
+#install.packages("multcomp")
+library(multcomp)  # No need cause p value <0.05
+
+anova_data <- data.frame(
+  HR_Zone = df_multiclass$HR_Zone,
+  Prob_Z2 = pred_probs[, 1],  # Probability of being in Zone-2
+  Prob_Z3 = pred_probs[, 2],  # Probability of being in Zone-3
+  Prob_Z4 = pred_probs[, 3]   # Probability of being in Zone-4
+)
+
+anova_z2 <- aov(Prob_Z2 ~ HR_Zone, data = anova_data)
+anova_z3 <- aov(Prob_Z3 ~ HR_Zone, data = anova_data)
+anova_z4 <- aov(Prob_Z4 ~ HR_Zone, data = anova_data)
+
+cat("ANOVA for Zone-2 Probabilities:\n")
+print(summary(anova_z2))
+
+cat("\nANOVA for Zone-3 Probabilities:\n")
+print(summary(anova_z3))
+
+cat("\nANOVA for Zone-4 Probabilities:\n")
+print(summary(anova_z4))
+
+```
+ANOVA confirms significant differences in probability distributions across HR Zones.
+
+
+

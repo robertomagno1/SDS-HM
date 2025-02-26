@@ -2,13 +2,19 @@
 title: "HW1"
 author: "Emanuele Iaccarino"
 date: "`r Sys.Date()`"
-output: pdf_document
+format: 
+  pdf:
+    documentclass: article
+    keep-tex: true
+header-includes:
+  - \usepackage{times}
+  - \usepackage[top=2cm, bottom=2cm, left=2cm, right=2cm]{geometry}
 ---
 
-```{r, include=FALSE}
-#knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
-#tinytex::install_tinytex()
-#tinytex::is_tinytex()
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+tinytex::install_tinytex()
+tinytex::is_tinytex()
 ```
 
 # Part 1: When Brutti and Spinelli collide
