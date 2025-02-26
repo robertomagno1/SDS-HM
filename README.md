@@ -13,7 +13,7 @@ The study is divided into:
 ---
 ## 📂 Repository Structure
 ```
-hw2-3-two-sample-testing/
+SDS-HM/
 │── data/                     # Folder for datasets
 │   ├── hw_data.RData         # Provided dataset for HR Zones
 │── src/                      # Source code files
@@ -33,24 +33,6 @@ hw2-3-two-sample-testing/
 Ensure you have the following installed:
 - **R** (Latest Version) 🔢
 - **RStudio** (Recommended) 🖥️
-- **Required R Packages**
-  ```r
-  install.packages(c("ggplot2", "dplyr", "tidyr", "rpart", "rpart.plot", "pROC"))
-  ```
-
-### **Running the Analysis**
-1. Clone this repository:
-   ```sh
-   git clone https://github.com/robertomagno1/SDS-HM
-   cd hw2-3-two-sample-testing
-   ```
-2. Open `hw2_3_analysis.Rmd` in **RStudio**.
-3. Run the R Markdown file to generate results:
-   ```r
-   rmarkdown::render("src/hw2_3_analysis.Rmd")
-   ```
-4. The results will be available in `results/`.
-
 ---
 ## 📊 Methodology
 
