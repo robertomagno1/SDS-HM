@@ -13,19 +13,17 @@ The study is divided into:
 ---
 ## 📂 Repository Structure
 ```
-SDS-HM/
-│── data/                     # Folder for datasets
-│   ├── hw_data.RData         # Provided dataset for HR Zones
-│── src/                      # Source code files
-│   ├── hw2_3_analysis.Rmd    # Main RMarkdown file
-│   ├── hw2_3_analysis.html   # Rendered HTML output
-│── results/                  # Results and visualizations
-│   ├── plots/                # Folder for generated plots
-│   ├── accuracy_results.csv  # Performance results of classifiers
-│── README.md                 # Main documentation
-│── LICENSE                   # Open-source license (optional)
-│── .gitignore                # Ignore unnecessary files (e.g., .Rproj)
-```
+├── LICENSE
+├── Part3 
+    ├── HW3.Rmd
+    └── HW3_TEXT.html
+├── README.md
+├── part1
+    ├── HW1.Rmd
+    └── HW1_TEXT.pdf
+└── part2
+    ├── HW2.Rmd
+    └── HW2_TEXT.pdf
 
 ---
 ## 🚀 Getting Started
